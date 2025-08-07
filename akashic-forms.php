@@ -3,7 +3,7 @@
  * Plugin Name: Akashic Forms
  * Plugin URI:  https://example.com/akashic-forms
  * Description: A custom form builder and submission management plugin for WordPress.
- * Version:     1.0.0
+ * Version:     1.0.1
  * Author:      Your Name
  * Author URI:  https://example.com
  * License:     GPL2
@@ -18,39 +18,27 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define plugin constants.
-define( 'AKASHIC_FORMS_VERSION', '1.0.0' );
+define( 'AKASHIC_FORMS_VERSION', '1.0.1' );
 define( 'AKASHIC_FORMS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'AKASHIC_FORMS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
-require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-cpt.php';
+// Include necessary files.
 require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-cpt.php';
 require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-metabox.php';
 require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-shortcode.php';
-// Include necessary files.
-// require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-cpt.php';
-// require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-shortcode.php';
 require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-db.php';
 require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-submission-handler.php';
 require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-admin.php';
 require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-google-drive.php';
 
 /**
- * The core plugin class that is used to define internationalization,
- * admin-specific hooks, and public-facing hooks.
+ * Enqueue scripts and styles.
  */
-// require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms.php';
-
-/**
- * Begins execution of the plugin.
- *
- * Since everything within the plugin is registered via hooks,
- * then there is no need to explicitly call any action or filter hook.
- *
- * When the plugin is loaded, it will begin to register the hooks
- * with WordPress.
- */
-// function run_akashic_forms() {
-//     $plugin = new Akashic_Forms();
-//     $plugin->run();
-// }
-// run_akashic_forms();
+function akashic_forms_enqueue_scripts() {
+    wp_enqueue_style( 'akashic-forms-public', AKASHIC_FORMS_PLUGIN_URL . 'assets/css/akashic-forms-public.css', array(), AKASHIC_FORMS_VERSION );
+    wp_enqueue_script( 'akashic-forms-public', AKASHIC_FORMS_PLUGIN_URL . 'assets/js/akashic-forms-public.js', array( 'jquery' ), AKASHIC_FORMS_VERSION, true );
+    wp_localize_script( 'akashic-forms-public', 'akashicForms', array(
+        'ajax_url' => admin_url( 'admin-ajax.php' ),
+    ) );
+}
+add_action( 'wp_enqueue_scripts', 'akashic_forms_enqueue_scripts' );

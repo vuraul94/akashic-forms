@@ -18,66 +18,49 @@ if ( ! class_exists( 'Akashic_Forms_Submission_Handler' ) ) {
          * Constructor.
          */
         public function __construct() {
-            add_action( 'init', array( $this, 'handle_form_submission' ) );
+            // These actions are specifically for handling AJAX requests from your form.
+            add_action( 'wp_ajax_akashic_form_submit', array( $this, 'handle_ajax_submission' ) );
+            add_action( 'wp_ajax_nopriv_akashic_form_submit', array( $this, 'handle_ajax_submission' ) );
         }
 
         /**
-         * Handle form submission.
+         * Handle form submission via AJAX.
          */
-        public function handle_form_submission() {
-            if ( ! isset( $_POST['akashic_form_submit'] ) ) {
-                return;
-            }
-
+        public function handle_ajax_submission() {
+            // Always check the nonce for security.
             if ( ! isset( $_POST['akashic_form_nonce'] ) || ! wp_verify_nonce( $_POST['akashic_form_nonce'], 'akashic_submit_form' ) ) {
-                wp_die( __( 'Security check failed.', 'akashic-forms' ) );
+                wp_send_json_error( array( 'message' => __( 'Security check failed.', 'akashic-forms' ) ) );
             }
 
             $form_id = isset( $_POST['akashic_form_id'] ) ? absint( $_POST['akashic_form_id'] ) : 0;
 
             if ( ! $form_id ) {
-                return;
+                wp_send_json_error( array( 'message' => __( 'Invalid form ID.', 'akashic-forms' ) ) );
             }
 
             $form_fields = get_post_meta( $form_id, '_akashic_form_fields', true );
             $submission_data = array();
             $errors = array();
 
+            // Loop through fields to validate and sanitize data.
             foreach ( $form_fields as $field_key => $field ) {
                 $field_name = isset( $field['name'] ) ? sanitize_key( $field['name'] ) : '';
                 $field_label = isset( $field['label'] ) ? sanitize_text_field( $field['label'] ) : '';
                 $field_type = isset( $field['type'] ) ? sanitize_key( $field['type'] ) : 'text';
                 $field_required = isset( $field['required'] ) && '1' === $field['required'];
-                $field_pattern = isset( $field['pattern'] ) ? $field['pattern'] : '';
-                $field_validation_message = isset( $field['validation_message'] ) ? sanitize_text_field( $field['validation_message'] ) : '';
-                $field_min = isset( $field['min'] ) ? $field['min'] : '';
-                $field_max = isset( $field['max'] ) ? $field['max'] : '';
-                $field_step = isset( $field['step'] ) ? $field['step'] : '';
-                $field_options = isset( $field['options'] ) ? $field['options'] : array();
 
-                if ( empty( $field_name ) && 'fieldset' !== $field_type ) {
-                    continue;
-                }
-
-                // Skip fieldset type as it's for grouping, not direct submission.
-                if ( 'fieldset' === $field_type ) {
+                if ( empty( $field_name ) || 'fieldset' === $field_type ) {
                     continue;
                 }
 
                 $field_value = null;
 
-                // Handle file uploads separately.
+                // Handle file uploads.
                 if ( 'file' === $field_type ) {
-                    if ( $field_required && empty( $_FILES[ $field_name ] ) ) {
-                        $errors[ $field_name ] = sprintf( __( '%s is required.', 'akashic-forms' ), $field_label );
-                        continue;
-                    }
-
-                    if ( ! function_exists( 'wp_handle_upload' ) ) {
-                        require_once( ABSPATH . 'wp-admin/includes/file.php' );
-                    }
-
                     if ( ! empty( $_FILES[ $field_name ] ) && $_FILES[ $field_name ]['error'] === UPLOAD_ERR_OK ) {
+                        if ( ! function_exists( 'wp_handle_upload' ) ) {
+                            require_once( ABSPATH . 'wp-admin/includes/file.php' );
+                        }
                         $upload_overrides = array( 'test_form' => false );
                         $uploaded_file = wp_handle_upload( $_FILES[ $field_name ], $upload_overrides );
 
@@ -87,114 +70,39 @@ if ( ! class_exists( 'Akashic_Forms_Submission_Handler' ) ) {
                             $errors[ $field_name ] = sprintf( __( 'Error uploading %s: %s', 'akashic-forms' ), $field_label, $uploaded_file['error'] );
                         }
                     } elseif ( $field_required && ( ! isset( $_FILES[ $field_name ] ) || $_FILES[ $field_name ]['error'] !== UPLOAD_ERR_NO_FILE ) ) {
-                        $errors[ $field_name ] = sprintf( __( 'Error uploading %s.', 'akashic-forms' ), $field_label );
+                        $errors[ $field_name ] = sprintf( __( '%s is required.', 'akashic-forms' ), $field_label );
                     }
                 } else {
-                    // Get field value from POST data.
+                    // Handle other field types.
                     if ( 'checkbox' === $field_type ) {
-                        $field_value = isset( $_POST[ $field_name ] ) ? array_map( 'sanitize_text_field', wp_unslash( (array) $_POST[ $field_name ] ) ) : array();
+                        $field_value = isset( $_POST[ $field_name ] ) ? array_map( 'sanitize_text_field', (array) $_POST[ $field_name ] ) : array();
                     } else {
-                        $field_value = isset( $_POST[ $field_name ] ) ? sanitize_text_field( wp_unslash( $_POST[ $field_name ] ) ) : '';
+                        $field_value = isset( $_POST[ $field_name ] ) ? sanitize_text_field( stripslashes( $_POST[ $field_name ] ) ) : '';
                     }
 
-                    // Server-side validation.
-                    if ( $field_required && empty( $field_value ) && '0' !== $field_value ) {
-                        $errors[ $field_name ] = ! empty( $field_validation_message ) ? $field_validation_message : sprintf( __( '%s is required.', 'akashic-forms' ), $field_label );
-                    }
-
-                    // Validate pattern.
-                    if ( ! empty( $field_pattern ) && ! empty( $field_value ) && ! preg_match( '/' . $field_pattern . '/', $field_value ) ) {
-                        $errors[ $field_name ] = ! empty( $field_validation_message ) ? $field_validation_message : sprintf( __( '%s is invalid.', 'akashic-forms' ), $field_label );
-                    }
-
-                    // Validate min/max/step for numeric and range types.
-                    if ( in_array( $field_type, array( 'number', 'range' ) ) && ! empty( $field_value ) && is_numeric( $field_value ) ) {
-                        if ( ! empty( $field_min ) && $field_value < $field_min ) {
-                            $errors[ $field_name ] = ! empty( $field_validation_message ) ? $field_validation_message : sprintf( __( '%s must be at least %s.', 'akashic-forms' ), $field_label, $field_min );
-                        }
-                        if ( ! empty( $field_max ) && $field_value > $field_max ) {
-                            $errors[ $field_name ] = ! empty( $field_validation_message ) ? $field_validation_message : sprintf( __( '%s must be at most %s.', 'akashic-forms' ), $field_label, $field_max );
-                        }
-                        if ( ! empty( $field_step ) && ( $field_value - $field_min ) % $field_step !== 0 ) {
-                            $errors[ $field_name ] = ! empty( $field_validation_message ) ? $field_validation_message : sprintf( __( '%s must be a multiple of %s.', 'akashic-forms' ), $field_label, $field_step );
-                        }
-                    }
-
-                    // Validate minlength/maxlength for text-based types.
-                    if ( in_array( $field_type, array( 'text', 'email', 'password', 'url', 'tel', 'search', 'textarea' ) ) && ! empty( $field_value ) ) {
-                        $length = strlen( $field_value );
-                        if ( ! empty( $field_min ) && $length < $field_min ) {
-                            $errors[ $field_name ] = ! empty( $field_validation_message ) ? $field_validation_message : sprintf( __( '%s must be at least %s characters long.', 'akashic-forms' ), $field_label, $field_min );
-                        }
-                        if ( ! empty( $field_max ) && $length > $field_max ) {
-                            $errors[ $field_name ] = ! empty( $field_validation_message ) ? $field_validation_message : sprintf( __( '%s must be at most %s characters long.', 'akashic-forms' ), $field_label, $field_max );
-                        }
-                    }
-
-                    // Specific type validations.
-                    switch ( $field_type ) {
-                        case 'email':
-                            if ( ! empty( $field_value ) && ! is_email( $field_value ) ) {
-                                $errors[ $field_name ] = ! empty( $field_validation_message ) ? $field_validation_message : sprintf( __( '%s must be a valid email address.', 'akashic-forms' ), $field_label );
-                            }
-                            break;
-                        case 'url':
-                            if ( ! empty( $field_value ) && ! filter_var( $field_value, FILTER_VALIDATE_URL ) ) {
-                                $errors[ $field_name ] = ! empty( $field_validation_message ) ? $field_validation_message : sprintf( __( '%s must be a valid URL.', 'akashic-forms' ), $field_label );
-                            }
-                            break;
-                        case 'date':
-                            // Basic date format validation (YYYY-MM-DD)
-                            if ( ! empty( $field_value ) && ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $field_value ) ) {
-                                $errors[ $field_name ] = ! empty( $field_validation_message ) ? $field_validation_message : sprintf( __( '%s must be a valid date (YYYY-MM-DD).', 'akashic-forms' ), $field_label );
-                            }
-                            break;
-                        case 'time':
-                            // Basic time format validation (HH:MM)
-                            if ( ! empty( $field_value ) && ! preg_match( '/^\d{2}:\d{2}$/', $field_value ) ) {
-                                $errors[ $field_name ] = ! empty( $field_validation_message ) ? $field_validation_message : sprintf( __( '%s must be a valid time (HH:MM).', 'akashic-forms' ), $field_label );
-                            }
-                            break;
-                        case 'select':
-                        case 'radio':
-                            $valid_options = array_column( $field_options, 'value' );
-                            if ( ! empty( $field_value ) && ! in_array( $field_value, $valid_options ) ) {
-                                $errors[ $field_name ] = ! empty( $field_validation_message ) ? $field_validation_message : sprintf( __( '%s has an invalid selection.', 'akashic-forms' ), $field_label );
-                            }
-                            break;
-                        case 'checkbox':
-                            $valid_options = array_column( $field_options, 'value' );
-                            if ( ! empty( $field_value ) ) {
-                                foreach ( $field_value as $checkbox_val ) {
-                                    if ( ! in_array( $checkbox_val, $valid_options ) ) {
-                                        $errors[ $field_name ] = ! empty( $field_validation_message ) ? $field_validation_message : sprintf( __( '%s has an invalid selection.', 'akashic-forms' ), $field_label );
-                                        break; // No need to check further for this field.
-                                    }
-                                }
-                            }
-                            break;
+                    if ( $field_required && empty( $field_value ) ) {
+                        $errors[ $field_name ] = sprintf( __( '%s is required.', 'akashic-forms' ), $field_label );
                     }
                 }
 
-                // Store sanitized and validated data.
+                // Store sanitized data if no errors for this field.
                 if ( ! isset( $errors[ $field_name ] ) ) {
                     $submission_data[ $field_name ] = $field_value;
                 }
             }
 
+            // If there are any validation errors, send them back.
             if ( ! empty( $errors ) ) {
-                // Store errors in a transient or session to display to the user.
-                set_transient( 'akashic_form_errors_' . $form_id, $errors, 60 * 5 );
-                // Redirect back to the form page.
-                wp_safe_redirect( wp_get_referer() );
-                exit;
+                $error_message = implode( "\n", $errors );
+                wp_send_json_error( array( 'message' => $error_message ) );
             }
 
-            // Save submission to database.
+            // Save submission to the database.
             $db = new Akashic_Forms_DB();
             $submission_id = $db->insert_submission( $form_id, $submission_data );
 
             if ( $submission_id ) {
+                // Send email notification.
                 $this->send_email_notification( $form_id, $submission_data );
 
                 // Google Drive Integration.
@@ -216,10 +124,9 @@ if ( ! class_exists( 'Akashic_Forms_Submission_Handler' ) ) {
                     $google_drive->append_to_sheet( $google_sheet_id, $google_sheet_name, $sheet_values );
                 }
 
-                wp_safe_redirect( add_query_arg( 'akashic_form_success', $form_id, wp_get_referer() ) );
-                exit;
+                wp_send_json_success();
             } else {
-                wp_die( __( 'There was an error saving your submission. Please try again.', 'akashic-forms' ) );
+                wp_send_json_error( array( 'message' => __( 'There was an error saving your submission. Please try again.', 'akashic-forms' ) ) );
             }
         }
 
@@ -235,7 +142,7 @@ if ( ! class_exists( 'Akashic_Forms_Submission_Handler' ) ) {
             $email_message = get_post_meta( $form_id, '_akashic_form_email_message', true );
 
             if ( empty( $recipient_email ) || empty( $email_subject ) || empty( $email_message ) ) {
-                return; // No email settings configured.
+                return;
             }
 
             $form_fields = get_post_meta( $form_id, '_akashic_form_fields', true );
@@ -244,7 +151,8 @@ if ( ! class_exists( 'Akashic_Forms_Submission_Handler' ) ) {
                 $field_name = isset( $field['name'] ) ? $field['name'] : '';
                 $field_label = isset( $field['label'] ) ? $field['label'] : '';
                 if ( ! empty( $field_name ) && isset( $submission_data[ $field_name ] ) ) {
-                    $all_fields_text .= sprintf( "%s: %s\n", $field_label, $submission_data[ $field_name ] );
+                    $value = is_array( $submission_data[ $field_name ] ) ? implode( ', ', $submission_data[ $field_name ] ) : $submission_data[ $field_name ];
+                    $all_fields_text .= sprintf( "%s: %s\n", $field_label, $value );
                 }
             }
 
@@ -252,9 +160,7 @@ if ( ! class_exists( 'Akashic_Forms_Submission_Handler' ) ) {
 
             wp_mail( $recipient_email, $email_subject, $email_message );
         }
-
     }
-
 }
 
 new Akashic_Forms_Submission_Handler();

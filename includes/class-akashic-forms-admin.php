@@ -34,6 +34,7 @@ if ( ! class_exists( 'Akashic_Forms_Admin' ) ) {
             if ( 'post.php' === $hook || 'post-new.php' === $hook ) {
                 if ( isset( $post->post_type ) && 'akashic_forms' === $post->post_type ) {
                     wp_enqueue_script( 'jquery-ui-sortable' );
+                    wp_enqueue_editor();
                 }
             }
         }
@@ -102,8 +103,6 @@ if ( ! class_exists( 'Akashic_Forms_Admin' ) ) {
                 'order'          => 'ASC',
             ) );
 
-            $form_id = isset( $_GET['form_id'] ) ? absint( $_GET['form_id'] ) : 0;
-
             // If no form_id is set, and there are forms, default to the first one.
             if ( ! $form_id && ! empty( $forms ) ) {
                 $form_id = $forms[0]->ID;
@@ -137,9 +136,6 @@ if ( ! class_exists( 'Akashic_Forms_Admin' ) ) {
             echo '</div>';
         }
 
-        /**
-         * Export submissions to CSV.
-         */
         /**
          * Render the Google Drive Settings admin page.
          */
@@ -273,42 +269,62 @@ if ( ! class_exists( 'Akashic_Forms_Admin' ) ) {
             }
 
             $form_id = isset( $_GET['form_id'] ) ? absint( $_GET['form_id'] ) : 0;
-
             if ( ! $form_id ) {
                 return;
             }
 
+            // Clean any previous output buffer to prevent corrupting the CSV file.
+            if ( ob_get_level() ) {
+                ob_end_clean();
+            }
+
             $form_title = sanitize_title( get_the_title( $form_id ) );
-            $filename = 'akashic-form-submissions-' . $form_title . '-' . date( 'Y-m-d' ) . '.csv';
+            $filename   = 'akashic-form-submissions-' . $form_title . '-' . date( 'Y-m-d' ) . '.csv';
 
             header( 'Content-Type: text/csv; charset=utf-8' );
             header( 'Content-Disposition: attachment; filename=' . $filename );
 
             $output = fopen( 'php://output', 'w' );
 
+            // Add UTF-8 BOM to ensure Excel reads special characters correctly.
+            fprintf( $output, "\xEF\xBB\xBF" );
+
+            // Prepare header row
             $form_fields = get_post_meta( $form_id, '_akashic_form_fields', true );
-            $header_row = array();
+            $header_row  = array();
             if ( ! empty( $form_fields ) ) {
                 foreach ( $form_fields as $field ) {
-                    if ( isset( $field['label'] ) ) {
-                        $header_row[] = $field['label'];
+                    // Only include fields that have a name (are actual inputs)
+                    if ( isset( $field['label'] ) && ! empty( $field['name'] ) ) {
+                        $header_row[ $field['name'] ] = $field['label'];
                     }
                 }
             }
-            $header_row[] = __( 'Submitted At', 'akashic-forms' );
-            fputcsv( $output, $header_row );
+            $header_row['submitted_at'] = __( 'Submitted At', 'akashic-forms' );
+            fputcsv( $output, array_values( $header_row ) );
 
-            $db = new Akashic_Forms_DB();
+            // Prepare data rows
+            $db          = new Akashic_Forms_DB();
             $submissions = $db->get_submissions( $form_id );
 
             foreach ( $submissions as $submission ) {
                 $row = array();
-                foreach ( $form_fields as $field ) {
-                    if ( isset( $field['name'] ) ) {
-                        $row[] = isset( $submission->submission_data[ $field['name'] ] ) ? $submission->submission_data[ $field['name'] ] : '';
+                // Match data to headers to ensure correct column order
+                foreach ( $header_row as $name => $label ) {
+                    $value = '';
+                    if ( 'submitted_at' === $name ) {
+                        $value = $submission->submitted_at;
+                    } elseif ( isset( $submission->submission_data[ $name ] ) ) {
+                        $value = $submission->submission_data[ $name ];
                     }
+
+                    if ( is_array( $value ) ) {
+                        $value = implode( ', ', $value );
+                    }
+
+                    // Sanitize value to ensure it's valid UTF-8, stripping invalid characters.
+                    $row[] = function_exists('iconv') ? iconv( 'UTF-8', 'UTF-8//IGNORE', $value ) : $value;
                 }
-                $row[] = $submission->submitted_at;
                 fputcsv( $output, $row );
             }
 

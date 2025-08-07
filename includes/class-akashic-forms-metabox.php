@@ -19,6 +19,7 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
          */
         public function __construct() {
             add_action( 'add_meta_boxes', array( $this, 'add_form_fields_meta_box' ) );
+            add_action( 'add_meta_boxes', array( $this, 'add_submission_settings_meta_box' ) );
             add_action( 'save_post', array( $this, 'save_form_meta_box_data' ) );
         }
 
@@ -52,6 +53,65 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                 'normal',
                 'high'
             );
+        }
+
+        /**
+         * Add the Submission Settings meta box.
+         */
+        public function add_submission_settings_meta_box() {
+            add_meta_box(
+                'akashic_form_submission_settings',
+                __( 'Submission Settings', 'akashic-forms' ),
+                array( $this, 'render_submission_settings_meta_box' ),
+                'akashic_forms',
+                'normal',
+                'high'
+            );
+        }
+
+        /**
+         * Render the Submission Settings meta box content.
+         */
+        public function render_submission_settings_meta_box( $post ) {
+            wp_nonce_field( 'akashic_save_submission_settings_meta_box_data', 'akashic_submission_settings_meta_box_nonce' );
+
+            $submission_action = get_post_meta( $post->ID, '_akashic_form_submission_action', true );
+            $redirect_url = get_post_meta( $post->ID, '_akashic_form_redirect_url', true );
+            $form_message = get_post_meta( $post->ID, '_akashic_form_message', true );
+            $modal_message = get_post_meta( $post->ID, '_akashic_form_modal_message', true );
+            ?>
+            <p>
+                <label for="akashic_form_submission_action"><?php _e( 'Action After Submission:', 'akashic-forms' ); ?></label>
+                <select name="akashic_form_submission_action" id="akashic_form_submission_action">
+                    <option value="redirect" <?php selected( $submission_action, 'redirect' ); ?>><?php _e( 'Redirect to URL', 'akashic-forms' ); ?></option>
+                    <option value="message" <?php selected( $submission_action, 'message' ); ?>><?php _e( 'Replace form with a message', 'akashic-forms' ); ?></option>
+                    <option value="modal" <?php selected( $submission_action, 'modal' ); ?>><?php _e( 'Show message in a modal', 'akashic-forms' ); ?></option>
+                </select>
+            </p>
+            <div id="akashic-submission-action-settings">
+                <p class="submission-action-setting" data-action="redirect" style="<?php echo 'redirect' !== $submission_action ? 'display: none;' : ''; ?>">
+                    <label for="akashic_form_redirect_url"><?php _e( 'Redirect URL:', 'akashic-forms' ); ?></label>
+                    <input type="url" name="akashic_form_redirect_url" id="akashic_form_redirect_url" value="<?php echo esc_url( $redirect_url ); ?>" class="large-text" />
+                </p>
+                <div class="submission-action-setting" data-action="message" style="<?php echo 'message' !== $submission_action ? 'display: none;' : ''; ?>">
+                    <label for="akashic_form_message"><?php _e( 'Message:', 'akashic-forms' ); ?></label>
+                    <?php wp_editor( $form_message, 'akashic_form_message', array( 'textarea_name' => 'akashic_form_message' ) ); ?>
+                </div>
+                <div class="submission-action-setting" data-action="modal" style="<?php echo 'modal' !== $submission_action ? 'display: none;' : ''; ?>">
+                    <label for="akashic_form_modal_message"><?php _e( 'Modal Message:', 'akashic-forms' ); ?></label>
+                    <?php wp_editor( $modal_message, 'akashic_form_modal_message', array( 'textarea_name' => 'akashic_form_modal_message' ) ); ?>
+                </div>
+            </div>
+            <script>
+                jQuery(document).ready(function($) {
+                    $('#akashic_form_submission_action').on('change', function() {
+                        var selectedAction = $(this).val();
+                        $('.submission-action-setting').hide();
+                        $('.submission-action-setting[data-action="' + selectedAction + '"]').show();
+                    });
+                });
+            </script>
+            <?php
         }
 
         /**
@@ -462,6 +522,21 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
 
             update_post_meta( $post_id, '_akashic_form_google_sheet_id', $google_sheet_id );
             update_post_meta( $post_id, '_akashic_form_google_sheet_name', $google_sheet_name );
+
+            // Save submission settings.
+            if ( ! isset( $_POST['akashic_submission_settings_meta_box_nonce'] ) || ! wp_verify_nonce( $_POST['akashic_submission_settings_meta_box_nonce'], 'akashic_save_submission_settings_meta_box_data' ) ) {
+                return;
+            }
+
+            $submission_action = isset( $_POST['akashic_form_submission_action'] ) ? sanitize_text_field( $_POST['akashic_form_submission_action'] ) : 'redirect';
+            $redirect_url = isset( $_POST['akashic_form_redirect_url'] ) ? esc_url_raw( $_POST['akashic_form_redirect_url'] ) : '';
+            $form_message = isset( $_POST['akashic_form_message'] ) ? wp_kses_post( $_POST['akashic_form_message'] ) : '';
+            $modal_message = isset( $_POST['akashic_form_modal_message'] ) ? wp_kses_post( $_POST['akashic_form_modal_message'] ) : '';
+
+            update_post_meta( $post_id, '_akashic_form_submission_action', $submission_action );
+            update_post_meta( $post_id, '_akashic_form_redirect_url', $redirect_url );
+            update_post_meta( $post_id, '_akashic_form_message', $form_message );
+            update_post_meta( $post_id, '_akashic_form_modal_message', $modal_message );
         }
 
     }

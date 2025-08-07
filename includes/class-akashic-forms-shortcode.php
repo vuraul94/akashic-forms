@@ -50,133 +50,148 @@ if ( ! class_exists( 'Akashic_Forms_Shortcode' ) ) {
                 return '<p>' . __( 'No fields configured for this form.', 'akashic-forms' ) . '</p>';
             }
 
+            $submission_action = get_post_meta( $form_id, '_akashic_form_submission_action', true );
+            $form_message = get_post_meta( $form_id, '_akashic_form_message', true );
+            $modal_message = get_post_meta( $form_id, '_akashic_form_modal_message', true );
+
             ob_start();
             ?>
-            <form action="" method="post" class="akashic-form" enctype="multipart/form-data">
-                <h3><?php echo esc_html( $form_post->post_title ); ?></h3>
-                <?php wp_nonce_field( 'akashic_submit_form', 'akashic_form_nonce' ); ?>
-                <input type="hidden" name="akashic_form_id" value="<?php echo esc_attr( $form_id ); ?>" />
-                <?php
-                foreach ( $form_fields as $field_key => $field ) {
-                    $field_type = isset( $field['type'] ) ? $field['type'] : 'text';
-                    $field_label = isset( $field['label'] ) ? $field['label'] : '';
-                    $field_name = isset( $field['name'] ) ? $field['name'] : '';
-                    $field_required = isset( $field['required'] ) && '1' === $field['required'] ? 'required' : '';
-                    $field_pattern = isset( $field['pattern'] ) ? $field['pattern'] : '';
-                    $field_validation_message = isset( $field['validation_message'] ) ? $field['validation_message'] : '';
-                    $field_min = isset( $field['min'] ) ? $field['min'] : '';
-                    $field_max = isset( $field['max'] ) ? $field['max'] : '';
-                    $field_step = isset( $field['step'] ) ? $field['step'] : '';
-                    $field_options = isset( $field['options'] ) ? $field['options'] : array();
-                    $field_parent_fieldset = isset( $field['parent_fieldset'] ) ? $field['parent_fieldset'] : '';
-                    $field_show_label = isset( $field['show_label'] ) && '1' === $field['show_label'];
-                    $field_placeholder = isset( $field['placeholder'] ) ? $field['placeholder'] : '';
-
-                    $html_attributes = '';
-                    if ( ! empty( $field_required ) ) {
-                        $html_attributes .= ' required';
-                    }
-                    if ( ! empty( $field_pattern ) ) {
-                        $html_attributes .= ' pattern="' . esc_attr( $field_pattern ) . '"';
-                    }
-                    if ( ! empty( $field_min ) ) {
-                        $html_attributes .= ' min="' . esc_attr( $field_min ) . '"';
-                    }
-                    if ( ! empty( $field_max ) ) {
-                        $html_attributes .= ' max="' . esc_attr( $field_max ) . '"';
-                    }
-                    if ( ! empty( $field_step ) ) {
-                        $html_attributes .= ' step="' . esc_attr( $field_step ) . '"';
-                    }
-                    if ( ! empty( $field_validation_message ) ) {
-                        $html_attributes .= ' oninvalid="this.setCustomValidity(\''. esc_attr( $field_validation_message ) .'\')" oninput="this.setCustomValidity(\'\')"';
-                    }
-                    if ( ! empty( $field_placeholder ) ) {
-                        $html_attributes .= ' placeholder="' . esc_attr( $field_placeholder ) . '"';
-                    }
-
-                    if ( empty( $field_name ) ) {
-                        continue;
-                    }
-                    ?>
-                    <?php if ( $field_show_label && 'hidden' !== $field_type ) : ?>
-                        <label for="<?php echo esc_attr( $field_name ); ?>"><?php echo esc_html( $field_label ); ?></label>
-                    <?php endif; ?>
+            <div id="akashic-form-container-<?php echo esc_attr( $form_id ); ?>">
+                <form action="" method="post" class="akashic-form" enctype="multipart/form-data" data-form-id="<?php echo esc_attr( $form_id ); ?>" data-submission-action="<?php echo esc_attr( $submission_action ); ?>">
+                    <h3><?php echo esc_html( $form_post->post_title ); ?></h3>
+                    <?php wp_nonce_field( 'akashic_submit_form', 'akashic_form_nonce' ); ?>
+                    <input type="hidden" name="akashic_form_id" value="<?php echo esc_attr( $form_id ); ?>" />
+                    <input type="hidden" name="action" value="akashic_form_submit" />
                     <?php
-                    switch ( $field_type ) {
-                        case 'textarea':
-                            ?>
-                            <textarea name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name ); ?>" <?php echo $html_attributes; ?>></textarea>
-                            <?php
-                            break;
-                        case 'file':
-                            ?>
-                            <input type="file" name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name ); ?>" <?php echo $html_attributes; ?> />
-                            <?php
-                            break;
-                        case 'select':
-                            ?>
-                            <select name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name ); ?>" <?php echo $html_attributes; ?> >
+                    foreach ( $form_fields as $field_key => $field ) {
+                        $field_type = isset( $field['type'] ) ? $field['type'] : 'text';
+                        $field_label = isset( $field['label'] ) ? $field['label'] : '';
+                        $field_name = isset( $field['name'] ) ? $field['name'] : '';
+                        $field_required = isset( $field['required'] ) && '1' === $field['required'] ? 'required' : '';
+                        $field_pattern = isset( $field['pattern'] ) ? $field['pattern'] : '';
+                        $field_validation_message = isset( $field['validation_message'] ) ? $field['validation_message'] : '';
+                        $field_min = isset( $field['min'] ) ? $field['min'] : '';
+                        $field_max = isset( $field['max'] ) ? $field['max'] : '';
+                        $field_step = isset( $field['step'] ) ? $field['step'] : '';
+                        $field_options = isset( $field['options'] ) ? $field['options'] : array();
+                        $field_parent_fieldset = isset( $field['parent_fieldset'] ) ? $field['parent_fieldset'] : '';
+                        $field_show_label = isset( $field['show_label'] ) && '1' === $field['show_label'];
+                        $field_placeholder = isset( $field['placeholder'] ) ? $field['placeholder'] : '';
+
+                        $html_attributes = '';
+                        if ( ! empty( $field_required ) ) {
+                            $html_attributes .= ' required';
+                        }
+                        if ( ! empty( $field_pattern ) ) {
+                            $html_attributes .= ' pattern="' . esc_attr( $field_pattern ) . '"';
+                        }
+                        if ( ! empty( $field_min ) ) {
+                            $html_attributes .= ' min="' . esc_attr( $field_min ) . '"';
+                        }
+                        if ( ! empty( $field_max ) ) {
+                            $html_attributes .= ' max="' . esc_attr( $field_max ) . '"';
+                        }
+                        if ( ! empty( $field_step ) ) {
+                            $html_attributes .= ' step="' . esc_attr( $field_step ) . '"';
+                        }
+                        if ( ! empty( $field_validation_message ) ) {
+                            $html_attributes .= ' oninvalid="this.setCustomValidity(\''. esc_attr( $field_validation_message ) .'\')" oninput="this.setCustomValidity(\'\')"';
+                        }
+                        if ( ! empty( $field_placeholder ) ) {
+                            $html_attributes .= ' placeholder="' . esc_attr( $field_placeholder ) . '"';
+                        }
+
+                        if ( empty( $field_name ) ) {
+                            continue;
+                        }
+                        ?>
+                        <p>
+                        <?php if ( $field_show_label && 'hidden' !== $field_type ) : ?>
+                            <label for="<?php echo esc_attr( $field_name ); ?>"><?php echo esc_html( $field_label ); ?></label>
+                        <?php endif; ?>
+                        <?php
+                        switch ( $field_type ) {
+                            case 'textarea':
+                                ?>
+                                <textarea name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name ); ?>" <?php echo $html_attributes; ?>></textarea>
+                                <?php
+                                break;
+                            case 'file':
+                                ?>
+                                <input type="file" name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name ); ?>" <?php echo $html_attributes; ?> />
+                                <?php
+                                break;
+                            case 'select':
+                                ?>
+                                <select name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name ); ?>" <?php echo $html_attributes; ?> >
+                                    <?php foreach ( $field_options as $option ) : ?>
+                                        <option value="<?php echo esc_attr( $option['value'] ); ?>"><?php echo esc_html( $option['label'] ); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <?php
+                                break;
+                            case 'radio':
+                                ?>
                                 <?php foreach ( $field_options as $option ) : ?>
-                                    <option value="<?php echo esc_attr( $option['value'] ); ?>"><?php echo esc_html( $option['label'] ); ?></option>
+                                    <input type="radio" name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name . '_' . sanitize_title( $option['value'] ) ); ?>" value="<?php echo esc_attr( $option['value'] ); ?>" <?php echo $html_attributes; ?> />
+                                    <label for="<?php echo esc_attr( $field_name . '_' . sanitize_title( $option['value'] ) ); ?>"><?php echo esc_html( $option['label'] ); ?></label><br/>
                                 <?php endforeach; ?>
-                            </select>
-                            <?php
-                            break;
-                        case 'radio':
-                            ?>
-                            <?php foreach ( $field_options as $option ) : ?>
-                                <input type="radio" name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name . '_' . sanitize_title( $option['value'] ) ); ?>" value="<?php echo esc_attr( $option['value'] ); ?>" <?php echo $html_attributes; ?> />
-                                <label for="<?php echo esc_attr( $field_name . '_' . sanitize_title( $option['value'] ) ); ?>"><?php echo esc_html( $option['label'] ); ?></label><br/>
-                            <?php endforeach; ?>
-                            <?php
-                            break;
-                        case 'checkbox':
-                            ?>
-                            <?php foreach ( $field_options as $option ) : ?>
-                                <input type="checkbox" name="<?php echo esc_attr( $field_name ); ?>[]" id="<?php echo esc_attr( $field_name . '_' . sanitize_title( $option['value'] ) ); ?>" value="<?php echo esc_attr( $option['value'] ); ?>" <?php echo $html_attributes; ?> />
-                                <label for="<?php echo esc_attr( $field_name . '_' . sanitize_title( $option['value'] ) ); ?>"><?php echo esc_html( $option['label'] ); ?></label><br/>
-                            <?php endforeach; ?>
-                            <?php
-                            break;
-                        case 'datalist':
-                            ?>
-                            <input type="text" name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name ); ?>" list="<?php echo esc_attr( $field_name ); ?>_list" <?php echo $html_attributes; ?> />
-                            <datalist id="<?php echo esc_attr( $field_name ); ?>_list">
+                                <?php
+                                break;
+                            case 'checkbox':
+                                ?>
                                 <?php foreach ( $field_options as $option ) : ?>
-                                    <option value="<?php echo esc_attr( $option['value'] ); ?>"><?php echo esc_html( $option['label'] ); ?></option>
+                                    <input type="checkbox" name="<?php echo esc_attr( $field_name ); ?>[]" id="<?php echo esc_attr( $field_name . '_' . sanitize_title( $option['value'] ) ); ?>" value="<?php echo esc_attr( $option['value'] ); ?>" <?php echo $html_attributes; ?> />
+                                    <label for="<?php echo esc_attr( $field_name . '_' . sanitize_title( $option['value'] ) ); ?>"><?php echo esc_html( $option['label'] ); ?></label><br/>
                                 <?php endforeach; ?>
-                            </datalist>
-                            <?php
-                            break;
-                        case 'hidden':
-                            ?>
-                            <input type="hidden" name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name ); ?>" value="" <?php echo $html_attributes; ?> />
-                            <?php
-                            break;
-                        case 'output':
-                            ?>
-                            <output name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name ); ?>" <?php echo $html_attributes; ?>></output>
-                            <?php
-                            break;
-                        case 'fieldset':
-                            // Fieldsets are handled by grouping fields, not rendered directly here.
-                            break;
-                        default:
-                            ?>
-                            <input type="<?php echo esc_attr( $field_type ); ?>" name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name ); ?>" <?php echo $html_attributes; ?> />
-                            <?php
-                            break;
+                                <?php
+                                break;
+                            case 'datalist':
+                                ?>
+                                <input type="text" name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name ); ?>" list="<?php echo esc_attr( $field_name ); ?>_list" <?php echo $html_attributes; ?> />
+                                <datalist id="<?php echo esc_attr( $field_name ); ?>_list">
+                                    <?php foreach ( $field_options as $option ) : ?>
+                                        <option value="<?php echo esc_attr( $option['value'] ); ?>"><?php echo esc_html( $option['label'] ); ?></option>
+                                    <?php endforeach; ?>
+                                </datalist>
+                                <?php
+                                break;
+                            case 'hidden':
+                                ?>
+                                <input type="hidden" name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name ); ?>" value="" <?php echo $html_attributes; ?> />
+                                <?php
+                                break;
+                            case 'output':
+                                ?>
+                                <output name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name ); ?>" <?php echo $html_attributes; ?>></output>
+                                <?php
+                                break;
+                            case 'fieldset':
+                                // Fieldsets are handled by grouping fields, not rendered directly here.
+                                break;
+                            default:
+                                ?>
+                                <input type="<?php echo esc_attr( $field_type ); ?>" name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name ); ?>" <?php echo $html_attributes; ?> />
+                                <?php
+                                break;
+                        }
+                        ?>
+                        </p>
+                        <?php
                     }
                     ?>
+                    <p>
+                        <input type="submit" name="akashic_form_submit" value="<?php esc_attr_e( 'Submit', 'akashic-forms' ); ?>" />
                     </p>
-                    <?php
-                }
-                ?>
-                <p>
-                    <input type="submit" name="akashic_form_submit" value="<?php esc_attr_e( 'Submit', 'akashic-forms' ); ?>" />
-                </p>
-            </form>
+                </form>
+                <div class="akashic-form-message" style="display: none;"><?php echo wp_kses_post( $form_message ); ?></div>
+            </div>
+            <div id="akashic-form-modal-<?php echo esc_attr( $form_id ); ?>" class="akashic-form-modal" style="display: none;">
+                <div class="akashic-form-modal-content">
+                    <span class="akashic-form-modal-close">&times;</span>
+                    <div class="akashic-form-modal-body"><?php echo wp_kses_post( $modal_message ); ?></div>
+                </div>
+            </div>
             <?php
             return ob_get_clean();
         }
