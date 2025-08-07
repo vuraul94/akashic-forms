@@ -265,6 +265,8 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
             $field_max = isset( $field['max'] ) ? $field['max'] : '';
             $field_step = isset( $field['step'] ) ? $field['step'] : '';
             $field_parent_fieldset = isset( $field['parent_fieldset'] ) ? $field['parent_fieldset'] : '';
+            $field_show_label = isset( $field['show_label'] ) ? $field['show_label'] : '1';
+            $field_placeholder = isset( $field['placeholder'] ) ? $field['placeholder'] : '';
             ?>
             <div class="akashic-field-row" style="border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; cursor: move;" data-field-type="<?php echo esc_attr( $field_type ); ?>">
                 <h4 class="akashic-field-handle"><span class="dashicons dashicons-move"></span> <?php _e( 'Field', 'akashic-forms' ); ?></h4>
@@ -296,6 +298,14 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                 <p>
                     <label for="akashic_form_fields_<?php echo esc_attr( $key ); ?>_label"><?php _e( 'Field Label:', 'akashic-forms' ); ?></label>
                     <input type="text" name="akashic_form_fields[<?php echo esc_attr( $key ); ?>][label]" id="akashic_form_fields_<?php echo esc_attr( $key ); ?>_label" value="<?php echo esc_attr( $field_label ); ?>" class="large-text" />
+                </p>
+                <p>
+                    <input type="checkbox" name="akashic_form_fields[<?php echo esc_attr( $key ); ?>][show_label]" id="akashic_form_fields_<?php echo esc_attr( $key ); ?>_show_label" value="1" <?php checked( $field_show_label, '1' ); ?> />
+                    <label for="akashic_form_fields_<?php echo esc_attr( $key ); ?>_show_label"><?php _e( 'Show Label', 'akashic-forms' ); ?></label>
+                </p>
+                <p>
+                    <label for="akashic_form_fields_<?php echo esc_attr( $key ); ?>_placeholder"><?php _e( 'Placeholder:', 'akashic-forms' ); ?></label>
+                    <input type="text" name="akashic_form_fields[<?php echo esc_attr( $key ); ?>][placeholder]" id="akashic_form_fields_<?php echo esc_attr( $key ); ?>_placeholder" value="<?php echo esc_attr( $field_placeholder ); ?>" class="large-text" />
                 </p>
                 <p>
                     <label for="akashic_form_fields_<?php echo esc_attr( $key ); ?>_name"><?php _e( 'Field Name (unique):', 'akashic-forms' ); ?></label>
@@ -408,6 +418,8 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                         'max'      => sanitize_text_field( $field['max'] ),
                         'step'     => sanitize_text_field( $field['step'] ),
                         'parent_fieldset' => sanitize_text_field( $field['parent_fieldset'] ),
+                        'show_label' => isset( $field['show_label'] ) ? '1' : '0',
+                        'placeholder' => sanitize_text_field( $field['placeholder'] ),
                     );
 
                     // Save options for select, radio, checkbox, and datalist fields.

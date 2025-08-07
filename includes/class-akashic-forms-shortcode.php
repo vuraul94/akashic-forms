@@ -69,6 +69,8 @@ if ( ! class_exists( 'Akashic_Forms_Shortcode' ) ) {
                     $field_step = isset( $field['step'] ) ? $field['step'] : '';
                     $field_options = isset( $field['options'] ) ? $field['options'] : array();
                     $field_parent_fieldset = isset( $field['parent_fieldset'] ) ? $field['parent_fieldset'] : '';
+                    $field_show_label = isset( $field['show_label'] ) && '1' === $field['show_label'];
+                    $field_placeholder = isset( $field['placeholder'] ) ? $field['placeholder'] : '';
 
                     $html_attributes = '';
                     if ( ! empty( $field_required ) ) {
@@ -87,13 +89,19 @@ if ( ! class_exists( 'Akashic_Forms_Shortcode' ) ) {
                         $html_attributes .= ' step="' . esc_attr( $field_step ) . '"';
                     }
                     if ( ! empty( $field_validation_message ) ) {
-                        $html_attributes .= ' oninvalid="this.setCustomValidity(\''. esc_attr( $field_validation_message ) .'\')" oninput="this.setCustomValidity(\'\")"';
+                        $html_attributes .= ' oninvalid="this.setCustomValidity(\''. esc_attr( $field_validation_message ) .'\')" oninput="this.setCustomValidity(\'\')"';
+                    }
+                    if ( ! empty( $field_placeholder ) ) {
+                        $html_attributes .= ' placeholder="' . esc_attr( $field_placeholder ) . '"';
                     }
 
                     if ( empty( $field_name ) ) {
                         continue;
                     }
                     ?>
+                    <?php if ( $field_show_label && 'hidden' !== $field_type ) : ?>
+                        <label for="<?php echo esc_attr( $field_name ); ?>"><?php echo esc_html( $field_label ); ?></label>
+                    <?php endif; ?>
                     <?php
                     switch ( $field_type ) {
                         case 'textarea':
