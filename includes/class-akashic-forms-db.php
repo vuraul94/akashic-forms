@@ -75,7 +75,7 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
         }
 
         /**
-         * Get submissions for a specific form.
+         * Get all submissions for a specific form.
          *
          * @param int $form_id The ID of the form.
          * @return array An array of submission objects.
@@ -91,6 +91,59 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
             }
 
             return $results;
+        }
+
+        /**
+         * Get a single submission by its ID.
+         *
+         * @param int $submission_id The ID of the submission.
+         * @return object|null The submission object, or null if not found.
+         */
+        public function get_submission( $submission_id ) {
+            global $wpdb;
+            $table_name = $wpdb->prefix . 'akashic_form_submissions';
+
+            $result = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table_name WHERE id = %d", $submission_id ) );
+
+            if ( $result ) {
+                $result->submission_data = unserialize( $result->submission_data );
+            }
+
+            return $result;
+        }
+
+        /**
+         * Delete a single submission from the database.
+         *
+         * @param int $submission_id The ID of the submission to delete.
+         * @return int|false The number of rows deleted, or false on error.
+         */
+        public function delete_submission( $submission_id ) {
+            global $wpdb;
+            $table_name = $wpdb->prefix . 'akashic_form_submissions';
+
+            return $wpdb->delete(
+                $table_name,
+                array( 'id' => $submission_id ),
+                array( '%d' )
+            );
+        }
+
+        /**
+         * Delete all submissions for a specific form.
+         *
+         * @param int $form_id The ID of the form.
+         * @return int|false The number of rows deleted, or false on error.
+         */
+        public function delete_submissions( $form_id ) {
+            global $wpdb;
+            $table_name = $wpdb->prefix . 'akashic_form_submissions';
+
+            return $wpdb->delete(
+                $table_name,
+                array( 'form_id' => $form_id ),
+                array( '%d' )
+            );
         }
 
     }
