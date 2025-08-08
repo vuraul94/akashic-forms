@@ -277,6 +277,7 @@ if (! class_exists('Akashic_Forms_Admin')) {
         {
             $client_id = get_option('akashic_forms_google_client_id');
             echo '<input type="text" name="akashic_forms_google_client_id" value="' . esc_attr($client_id) . '" class="regular-text" />';
+            echo '<p class="description">' . sprintf( __( 'Refer to this guide to get your Client ID: %s', 'akashic-forms' ), '<a href="https://developers.google.com/identity/protocols/oauth2/web-server#creatingcred" target="_blank">https://developers.google.com/identity/protocols/oauth2/web-server#creatingcred</a>' ) . '</p>';
         }
 
         /**
@@ -286,6 +287,7 @@ if (! class_exists('Akashic_Forms_Admin')) {
         {
             $client_secret = get_option('akashic_forms_google_client_secret');
             echo '<input type="text" name="akashic_forms_google_client_secret" value="' . esc_attr($client_secret) . '" class="regular-text" />';
+            echo '<p class="description">' . sprintf( __( 'Refer to this guide to get your Client Secret: %s', 'akashic-forms' ), '<a href="https://developers.google.com/identity/protocols/oauth2/web-server#creatingcred" target="_blank">https://developers.google.com/identity/protocols/oauth2/web-server#creatingcred</a>' ) . '</p>';
         }
 
         /**

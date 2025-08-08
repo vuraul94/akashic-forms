@@ -122,6 +122,35 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
             }
         }
 
+        /**
+         * Get spreadsheet headers.
+         *
+         * @param string $spreadsheet_id The ID of the spreadsheet.
+         * @param string $sheet_name The name of the sheet.
+         * @return array|false The headers of the sheet, or false on failure.
+         */
+        public function get_spreadsheet_headers( $spreadsheet_id, $sheet_name ) {
+            $client = $this->get_google_client();
+            if ( ! $client || ! $client->getAccessToken() ) {
+                return false; // Not authenticated.
+            }
+
+            $service = new Google_Service_Sheets( $client );
+
+            try {
+                $response = $service->spreadsheets_values->get( $spreadsheet_id, $sheet_name . '!1:1' );
+                $values = $response->getValues();
+                if ( empty( $values ) ) {
+                    return array();
+                }
+                return $values[0];
+            } catch ( Exception $e ) {
+                // Log error for debugging.
+                error_log( 'Akashic Forms Google Drive Error: ' . $e->getMessage() );
+                return false;
+            }
+        }
+
     }
 
 }

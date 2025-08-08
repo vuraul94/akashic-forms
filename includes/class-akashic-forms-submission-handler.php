@@ -111,17 +111,26 @@ if ( ! class_exists( 'Akashic_Forms_Submission_Handler' ) ) {
 
                 if ( ! empty( $google_sheet_id ) && ! empty( $google_sheet_name ) ) {
                     $google_drive = new Akashic_Forms_Google_Drive();
-                    $sheet_values = array();
-                    foreach ( $form_fields as $field ) {
-                        $field_name = isset( $field['name'] ) ? $field['name'] : '';
-                        if ( ! empty( $field_name ) && isset( $submission_data[ $field_name ] ) ) {
-                            $sheet_values[] = $submission_data[ $field_name ];
-                        } else {
-                            $sheet_values[] = ''; // Ensure all fields have a value for the sheet.
+                    $headers = $google_drive->get_spreadsheet_headers( $google_sheet_id, $google_sheet_name );
+
+                    if ( $headers ) {
+                        $sheet_values = array_fill_keys( $headers, '' );
+                        foreach ( $form_fields as $field ) {
+                            $field_name = isset( $field['name'] ) ? $field['name'] : '';
+                            $field_label = isset( $field['label'] ) ? $field['label'] : '';
+                            if ( ! empty( $field_name ) && isset( $submission_data[ $field_name ] ) ) {
+                                if ( in_array( $field_label, $headers ) ) {
+                                    $value = is_array( $submission_data[ $field_name ] ) ? implode( ', ', $submission_data[ $field_name ] ) : $submission_data[ $field_name ];
+                                    $sheet_values[ $field_label ] = $value;
+                                }
+                            }
                         }
+                        $sheet_values['Submission Date'] = current_time( 'mysql' );
+                        $google_drive->append_to_sheet( $google_sheet_id, $google_sheet_name, array_values($sheet_values) );
+                    } else {
+                        // Log error if headers can't be fetched
+                        error_log('Akashic Forms: Could not fetch headers from Google Sheet.');
                     }
-                    $sheet_values[] = current_time( 'mysql' ); // Add submission timestamp.
-                    $google_drive->append_to_sheet( $google_sheet_id, $google_sheet_name, $sheet_values );
                 }
 
                 wp_send_json_success();

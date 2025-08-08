@@ -301,6 +301,7 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                 <label for="akashic_form_google_sheet_id"><?php _e( 'Google Sheet ID:', 'akashic-forms' ); ?></label>
                 <input type="text" name="akashic_form_google_sheet_id" id="akashic_form_google_sheet_id" value="<?php echo esc_attr( $google_sheet_id ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'e.g., 1B0xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 'akashic-forms' ); ?>" />
                 <p class="description"><?php _e( 'Enter the ID of the Google Sheet where submissions should be appended. You can find this in the sheet\'s URL.', 'akashic-forms' ); ?></p>
+                <p class="description"><?php printf( __( 'Refer to this guide to get your sheet ID: %s', 'akashic-forms' ), '<a href="https://developers.google.com/sheets/api/guides/concepts#spreadsheet_id" target="_blank">https://developers.google.com/sheets/api/guides/concepts#spreadsheet_id</a>' ); ?></p>
             </p>
             <p>
                 <label for="akashic_form_google_sheet_name"><?php _e( 'Google Sheet Name:', 'akashic-forms' ); ?></label>
