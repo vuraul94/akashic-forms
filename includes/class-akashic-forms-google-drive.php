@@ -59,15 +59,22 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
                 $client->setAccessToken( $access_token );
             }
 
-            // If access token is expired, refresh it.
-            if ( $client->isAccessTokenExpired() ) {
+            // If an access token exists and is expired, attempt to refresh it.
+            // If no access token exists, we still want to return the client so createAuthUrl() can be called.
+            if ( $client->getAccessToken() && $client->isAccessTokenExpired() ) {
                 $refresh_token = $client->getRefreshToken();
                 if ( $refresh_token ) {
-                    $client->fetchAccessTokenWithRefreshToken( $refresh_token );
-                    update_option( 'akashic_forms_google_access_token', $client->getAccessToken() );
+                    try {
+                        $client->fetchAccessTokenWithRefreshToken( $refresh_token );
+                        update_option( 'akashic_forms_google_access_token', $client->getAccessToken() );
+                    } catch (Exception $e) {
+                        error_log( 'Akashic Forms Google Drive: Error refreshing token: ' . $e->getMessage() );
+                        // If refresh fails, clear the token so re-authentication is forced.
+                        delete_option( 'akashic_forms_google_access_token' );
+                    }
                 } else {
-                    error_log( 'Akashic Forms Google Drive: get_google_client - Access token expired and no refresh token available. Re-authentication required.' );
-                    return false; // No refresh token, need to re-authenticate.
+                    error_log( 'Akashic Forms Google Drive: get_google_client - Access token expired and no refresh token available. Clearing stored token to force re-authentication.' );
+                    delete_option( 'akashic_forms_google_access_token' ); // Clear the invalid token
                 }
             }
 

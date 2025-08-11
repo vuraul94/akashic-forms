@@ -214,16 +214,21 @@ if (! class_exists('Akashic_Forms_Admin')) {
                     ?>
                 </form>
                 <?php
-                $client        = new Akashic_Forms_Google_Drive();
-                $google_client = $client->get_google_client();
+                $client_id = get_option('akashic_forms_google_client_id');
+                $client_secret = get_option('akashic_forms_google_client_secret');
 
-                if ($google_client) {
-                    if (! $google_client->getAccessToken()) {
+                if (!empty($client_id) && !empty($client_secret)) {
+                    $client = new Akashic_Forms_Google_Drive();
+                    $google_client = $client->get_google_client();
+
+                    if ($google_client && !$google_client->getAccessToken()) {
                         $auth_url = $google_client->createAuthUrl();
                         echo '<p><a href="' . esc_url($auth_url) . '">' . __('Authorize Google Drive Integration', 'akashic-forms') . '</a></p>';
-                    } else {
+                    } elseif ($google_client && $google_client->getAccessToken()) {
                         echo '<p>' . __('Google Drive is connected.', 'akashic-forms') . '</p>';
                         echo '<p><a href="' . esc_url(add_query_arg('akashic_forms_google_disconnect', '1', admin_url('admin.php?page=akashic-forms-google-drive-settings'))) . '">' . __('Disconnect Google Drive', 'akashic-forms') . '</a></p>';
+                    } else {
+                        echo '<p class="error">' . __('Google API Client could not be initialized. Please check your Client ID and Client Secret.', 'akashic-forms') . '</p>';
                     }
                 } else {
                     echo '<p class="error">' . __('Please enter your Google API Client ID and Client Secret to enable Google Drive integration.', 'akashic-forms') . '</p>';
