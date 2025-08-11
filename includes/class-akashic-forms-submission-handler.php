@@ -75,10 +75,30 @@ if ( ! class_exists( 'Akashic_Forms_Submission_Handler' ) ) {
                     }
                 } else {
                     // Handle other field types.
-                    if ( 'checkbox' === $field_type ) {
-                        $field_value = isset( $_POST[ $field_name ] ) ? array_map( 'sanitize_text_field', (array) $_POST[ $field_name ] ) : array();
-                    } else {
-                        $field_value = isset( $_POST[ $field_name ] ) ? sanitize_text_field( stripslashes( $_POST[ $field_name ] ) ) : '';
+                    switch ( $field_type ) {
+                        case 'checkbox':
+                            // If the field name is present in $_POST and it's an array, it's multiple checkboxes.
+                            if ( isset( $_POST[ $field_name ] ) && is_array( $_POST[ $field_name ] ) ) {
+                                $field_value = array_map( 'sanitize_text_field', $_POST[ $field_name ] );
+                            } else {
+                                // This handles singular checkboxes. If it's set, it's checked (value 1), otherwise unchecked (value 0).
+                                $field_value = isset( $_POST[ $field_name ] ) ? '1' : '0';
+                            }
+                            break;
+                        case 'select':
+                            // Check if it's a multi-select (e.g., select name="myfield[]")
+                            if ( isset( $_POST[ $field_name ] ) && is_array( $_POST[ $field_name ] ) ) {
+                                $field_value = array_map( 'sanitize_text_field', $_POST[ $field_name ] );
+                            } else {
+                                $field_value = isset( $_POST[ $field_name ] ) ? sanitize_text_field( stripslashes( $_POST[ $field_name ] ) ) : '';
+                            }
+                            break;
+                        case 'radio':
+                            $field_value = isset( $_POST[ $field_name ] ) ? sanitize_text_field( stripslashes( $_POST[ $field_name ] ) ) : '';
+                            break;
+                        default:
+                            $field_value = isset( $_POST[ $field_name ] ) ? sanitize_text_field( stripslashes( $_POST[ $field_name ] ) ) : '';
+                            break;
                     }
 
                     if ( $field_required && empty( $field_value ) ) {

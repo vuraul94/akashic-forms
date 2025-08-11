@@ -186,10 +186,15 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                                 break;
                             case 'select':
                             case 'radio':
-                            case 'checkbox':
+                            case 'checkbox': // This will now be for multiple checkboxes
                             case 'datalist':
                                 $fieldRow.find('.akashic-field-setting-required').show();
                                 $fieldRow.find('.akashic-field-setting-options').show();
+                                $fieldRow.find('.akashic-field-setting-parent-fieldset').show();
+                                break;
+                            case 'checkbox_single': // New case for singular checkbox
+                                $fieldRow.find('.akashic-field-setting-required').show();
+                                // No options for singular checkbox, so don't show .akashic-field-setting-options
                                 $fieldRow.find('.akashic-field-setting-parent-fieldset').show();
                                 break;
                             case 'hidden':
@@ -340,7 +345,8 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                         <option value="textarea" <?php selected( $field_type, 'textarea' ); ?>><?php _e( 'Textarea', 'akashic-forms' ); ?></option>
                         <option value="file" <?php selected( $field_type, 'file' ); ?>><?php _e( 'File Upload', 'akashic-forms' ); ?></option>
                         <option value="date" <?php selected( $field_type, 'date' ); ?>><?php _e( 'Date', 'akashic-forms' ); ?></option>
-                        <option value="checkbox" <?php selected( $field_type, 'checkbox' ); ?>><?php _e( 'Checkbox', 'akashic-forms' ); ?></option>
+                        <option value="checkbox" <?php selected( $field_type, 'checkbox' ); ?>><?php _e( 'Checkbox (Multiple)', 'akashic-forms' ); ?></option>
+                        <option value="checkbox_single" <?php selected( $field_type, 'checkbox_single' ); ?>><?php _e( 'Checkbox (Single)', 'akashic-forms' ); ?></option>
                         <option value="select" <?php selected( $field_type, 'select' ); ?>><?php _e( 'Select', 'akashic-forms' ); ?></option>
                         <option value="radio" <?php selected( $field_type, 'radio' ); ?>><?php _e( 'Radio', 'akashic-forms' ); ?></option>
                         <option value="number" <?php selected( $field_type, 'number' ); ?>><?php _e( 'Number', 'akashic-forms' ); ?></option>
@@ -467,7 +473,7 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
 
             if ( isset( $_POST['akashic_form_fields'] ) ) {
                 $form_fields = array();
-                foreach ( $_POST['akashic_form_fields'] as $field ) {
+                foreach ( $_POST['akashic_form_fields'] as $field_key => $field ) {
                     $form_fields[] = array(
                         'type'     => sanitize_text_field( $field['type'] ),
                         'label'    => sanitize_text_field( $field['label'] ),

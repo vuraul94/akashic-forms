@@ -145,6 +145,12 @@ if ( ! class_exists( 'Akashic_Forms_Shortcode' ) ) {
                                 <?php endforeach; ?>
                                 <?php
                                 break;
+                            case 'checkbox_single':
+                                ?>
+                                <input type="hidden" name="<?php echo esc_attr( $field_name ); ?>" value="0" />
+                                <input type="checkbox" name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name ); ?>" value="1" <?php echo $html_attributes; ?> />
+                                <?php
+                                break;
                             case 'datalist':
                                 ?>
                                 <input type="text" name="<?php echo esc_attr( $field_name ); ?>" id="<?php echo esc_attr( $field_name ); ?>" list="<?php echo esc_attr( $field_name ); ?>_list" <?php echo $html_attributes; ?> />

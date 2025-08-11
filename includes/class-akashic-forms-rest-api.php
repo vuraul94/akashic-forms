@@ -109,9 +109,39 @@ if (! class_exists('Akashic_Forms_REST_API')) {
                         foreach ($form_fields as $field) {
                             $field_name = isset($field['name']) ? $field['name'] : '';
                             $field_label = isset($field['label']) ? $field['label'] : '';
+                            $field_type = isset($field['type']) ? $field['type'] : 'text'; // Get field type
+
                             if (!empty($field_name) && isset($form_data[$field_name])) {
-                                $value = is_array($form_data[$field_name]) ? implode(", ", $form_data[$field_name]) : $form_data[$field_name];
+                                $value = '';
+                                switch ($field_type) {
+                                    case 'checkbox':
+                                        // If it's an array, it's multiple checkboxes.
+                                        if (is_array($form_data[$field_name])) {
+                                            $value = implode(", ", array_map('sanitize_text_field', $form_data[$field_name]));
+                                        } else {
+                                            // Singular checkbox: if set, value is '1', else '0'.
+                                            $value = '1'; // Assuming if it's set, it's checked.
+                                        }
+                                        break;
+                                    case 'select':
+                                        // Check if it's a multi-select
+                                        if (is_array($form_data[$field_name])) {
+                                            $value = implode(", ", array_map('sanitize_text_field', $form_data[$field_name]));
+                                        } else {
+                                            $value = sanitize_text_field($form_data[$field_name]);
+                                        }
+                                        break;
+                                    case 'radio':
+                                        $value = sanitize_text_field($form_data[$field_name]);
+                                        break;
+                                    default:
+                                        $value = is_array($form_data[$field_name]) ? implode(", ", $form_data[$field_name]) : sanitize_text_field($form_data[$field_name]);
+                                        break;
+                                }
                                 $mapped_form_data[$field_label] = $value;
+                            } else if (!empty($field_name) && 'checkbox' === $field_type) {
+                                // Explicitly handle unchecked singular checkboxes for REST API
+                                $mapped_form_data[$field_label] = '0';
                             }
                         }
                     }
