@@ -100,7 +100,7 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
         public function append_to_sheet( $spreadsheet_id, $range, $values ) {
             $client = $this->get_google_client();
             if ( ! $client || ! $client->getAccessToken() ) {
-                return false; // Not authenticated.
+                return new WP_Error( 'not_authenticated', 'Google Drive API: Not authenticated.' );
             }
 
             $service = new \Google\Service\Sheets( $client ); // Fully qualified
@@ -120,13 +120,9 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
                 if ( 429 == $e->getCode() ) {
                     return new WP_Error( 'rate_limit_exceeded', 'Google Sheets API rate limit exceeded.' );
                 }
-                // Log other errors for debugging.
-                error_log( 'Akashic Forms Google Drive Error: ' . $e->getMessage() );
-                return false;
+                return new WP_Error( 'google_api_error', 'Google Drive API Error: ' . $e->getMessage() );
             } catch ( Exception $e ) {
-                // Log other errors for debugging.
-                error_log( 'Akashic Forms Google Drive Error: ' . $e->getMessage() );
-                return false;
+                return new WP_Error( 'generic_error', 'An unexpected error occurred: ' . $e->getMessage() );
             }
         }
 
@@ -140,7 +136,7 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
         public function get_spreadsheet_headers( $spreadsheet_id, $sheet_name ) {
             $client = $this->get_google_client();
             if ( ! $client || ! $client->getAccessToken() ) {
-                return false; // Not authenticated.
+                return new WP_Error( 'not_authenticated', 'Google Drive API: Not authenticated.' );
             }
 
             $service = new \Google\Service\Sheets( $client ); // Fully qualified
@@ -152,10 +148,13 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
                     return array();
                 }
                 return $values[0];
+            } catch ( \Google\Service\Exception $e ) {
+                if ( 429 == $e->getCode() ) {
+                    return new WP_Error( 'rate_limit_exceeded', 'Google Sheets API rate limit exceeded.' );
+                }
+                return new WP_Error( 'google_api_error', 'Google Drive API Error: ' . $e->getMessage() );
             } catch ( Exception $e ) {
-                // Log error for debugging.
-                error_log( 'Akashic Forms Google Drive Error: ' . $e->getMessage() );
-                return false;
+                return new WP_Error( 'generic_error', 'An unexpected error occurred: ' . $e->getMessage() );
             }
         }
 

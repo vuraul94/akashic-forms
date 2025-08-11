@@ -96,25 +96,23 @@ if ( ! class_exists( 'Akashic_Forms_Queue_Processor' ) ) {
                 $form_id = $submission->form_id;
                 $form_data = $submission->submission_data;
 
-                $spreadsheet_id = get_post_meta( $form_id, '_akashic_form_google_sheet_id', true );
-                $sheet_name = get_post_meta( $form_id, '_akashic_form_google_sheet_name', true );
+                $spreadsheet_id = get_post_meta( $form_id, '_akashic_form_google_sheet_id', true ); // Corrected meta key
+                $sheet_name = get_post_meta( $form_id, '_akashic_form_google_sheet_name', true ); // Corrected meta key
 
                 if ( empty( $spreadsheet_id ) || empty( $sheet_name ) ) {
                     $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => "Google Sheet not configured for the form $form_id." ) );
                     continue;
                 }
-                
-                $headers = $google_drive->get_spreadsheet_headers( $spreadsheet_id, $sheet_name );
-                if ( false === $headers ) {
-                    $form_fields = get_post_meta( $form_id, '_akashic_forms_fields', true );
-                    $new_headers = array();
-                    foreach ( $form_fields as $field ) {
-                        $new_headers[] = $field['label'];
-                    }
-                    $google_drive->append_to_sheet( $spreadsheet_id, $sheet_name, $new_headers );
-                    $headers = $new_headers;
-                }
 
+                // Get headers
+                $headers_result = $google_drive->get_spreadsheet_headers( $spreadsheet_id, $sheet_name );
+                if ( is_wp_error( $headers_result ) ) {
+                    $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => 'Failed to get spreadsheet headers: ' . $headers_result->get_error_message() ) );
+                    continue;
+                }
+                $headers = $headers_result;
+
+                // Append data
                 $values = array();
                 foreach ( $headers as $header ) {
                     $values[] = isset( $form_data[ $header ] ) ? $form_data[ $header ] : '';
@@ -131,7 +129,8 @@ if ( ! class_exists( 'Akashic_Forms_Queue_Processor' ) ) {
                         $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => $result->get_error_message() ) );
                     }
                 } elseif ( ! $result ) {
-                    // $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => 'Unknown error.' ) );
+                    // This case should ideally not be reached if append_to_sheet always returns WP_Error on failure
+                    $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => 'Unknown error or non-WP_Error failure from Google Drive API.' ) );
                 } else {
                     $db->update_submission_in_queue( $submission->id, array( 'status' => 'completed' ) );
                 }
