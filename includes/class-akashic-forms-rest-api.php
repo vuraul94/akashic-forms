@@ -47,13 +47,43 @@ if ( ! class_exists( 'Akashic_Forms_REST_API' ) ) {
             }
 
             $db = new Akashic_Forms_DB();
-            $result = $db->add_submission_to_queue( $form_id, $form_data );
+            $db->insert_submission( $form_id, $form_data ); // Insert into akashic_form_submissions table
 
-            if ( ! $result ) {
-                return new WP_REST_Response( array( 'message' => 'Failed to add submission to queue.' ), 500 );
+            $google_drive = new Akashic_Forms_Google_Drive();
+            $spreadsheet_id = get_post_meta( $form_id, '_akashic_forms_google_sheet_id', true );
+            $sheet_name = get_post_meta( $form_id, '_akashic_forms_google_sheet_name', true );
+
+            if ( empty( $spreadsheet_id ) || empty( $sheet_name ) ) {
+                // If no sheet is configured, just queue it
+                $db->add_submission_to_queue( $form_id, $form_data );
+                return new WP_REST_Response( array( 'message' => 'Submission queued successfully.' ), 200 );
             }
 
-            return new WP_REST_Response( array( 'message' => 'Submission queued successfully.' ), 200 );
+            $headers = $google_drive->get_spreadsheet_headers( $spreadsheet_id, $sheet_name );
+            if ( false === $headers ) {
+                $form_fields = get_post_meta( $form_id, '_akashic_forms_fields', true );
+                $new_headers = array();
+                foreach ( $form_fields as $field ) {
+                    $new_headers[] = $field['label'];
+                }
+                $google_drive->append_to_sheet( $spreadsheet_id, $sheet_name, $new_headers );
+                $headers = $new_headers;
+            }
+
+            $values = array();
+            foreach ( $headers as $header ) {
+                $values[] = isset( $form_data[ $header ] ) ? $form_data[ $header ] : '';
+            }
+
+            $result = $google_drive->append_to_sheet( $spreadsheet_id, $sheet_name, $values );
+
+            if ( is_wp_error( $result ) || ! $result ) {
+                // If the sync fails, add it to the queue
+                $db->add_submission_to_queue( $form_id, $form_data );
+                return new WP_REST_Response( array( 'message' => 'Submission queued successfully.' ), 200 );
+            }
+
+            return new WP_REST_Response( array( 'message' => 'Data synced successfully.' ), 200 );
         }
     }
 

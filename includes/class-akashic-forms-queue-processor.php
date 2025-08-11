@@ -20,14 +20,45 @@ if ( ! class_exists( 'Akashic_Forms_Queue_Processor' ) ) {
         public function __construct() {
             add_action( 'init', array( $this, 'schedule_cron' ) );
             add_action( 'akashic_forms_process_queue', array( $this, 'process_queue' ) );
+            add_filter( 'cron_schedules', array( $this, 'add_custom_cron_intervals' ) );
+        }
+
+        /**
+         * Add custom cron intervals.
+         *
+         * @param array $schedules
+         * @return array
+         */
+        public function add_custom_cron_intervals( $schedules ) {
+            $schedules['five_minutes'] = array(
+                'interval' => 5 * MINUTE_IN_SECONDS,
+                'display'  => __( 'Every 5 Minutes', 'akashic-forms' ),
+            );
+            $schedules['fifteen_minutes'] = array(
+                'interval' => 15 * MINUTE_IN_SECONDS,
+                'display'  => __( 'Every 15 Minutes', 'akashic-forms' ),
+            );
+            $schedules['thirty_minutes'] = array(
+                'interval' => 30 * MINUTE_IN_SECONDS,
+                'display'  => __( 'Every 30 Minutes', 'akashic-forms' ),
+            );
+            return $schedules;
         }
 
         /**
          * Schedule the cron job.
          */
         public function schedule_cron() {
-            if ( ! wp_next_scheduled( 'akashic_forms_process_queue' ) ) {
-                wp_schedule_event( time(), 'five_minutes', 'akashic_forms_process_queue' );
+            $enabled = get_option( 'akashic_forms_cron_enabled', true );
+            $interval = get_option( 'akashic_forms_cron_interval', 'five_minutes' );
+
+            // Clear existing schedules to prevent duplicates or old intervals.
+            wp_clear_scheduled_hook( 'akashic_forms_process_queue' );
+
+            if ( $enabled ) {
+                if ( ! wp_next_scheduled( 'akashic_forms_process_queue' ) ) {
+                    wp_schedule_event( time(), $interval, 'akashic_forms_process_queue' );
+                }
             }
         }
 

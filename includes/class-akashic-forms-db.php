@@ -383,6 +383,64 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
             $wpdb->query( "TRUNCATE TABLE $table_name" );
         }
 
+        /**
+         * Get submissions from the queue.
+         *
+         * @param array $args Arguments for retrieving submissions.
+         * @return array An array of submission objects.
+         */
+        public function get_submissions_from_queue( $args = array() ) {
+            global $wpdb;
+            $table_name = $wpdb->prefix . 'akashic_form_queue';
+
+            $defaults = array(
+                'per_page' => 20,
+                'page'     => 1,
+                'orderby'  => 'created_at',
+                'order'    => 'DESC',
+                'form_id'  => 0,
+                'status'   => 'completed',
+            );
+
+            $args = wp_parse_args( $args, $defaults );
+
+            $sql = "SELECT * FROM $table_name WHERE form_id = %d AND status = %s";
+
+            $sql .= " ORDER BY " . esc_sql( $args['orderby'] ) . " " . esc_sql( $args['order'] );
+            $sql .= " LIMIT " . absint( $args['per_page'] );
+            $sql .= " OFFSET " . absint( ( $args['page'] - 1 ) * $args['per_page'] );
+
+            $results = $wpdb->get_results( $wpdb->prepare( $sql, $args['form_id'], $args['status'] ) );
+
+            foreach ( $results as $result ) {
+                $result->submission_data = unserialize( $result->submission_data );
+            }
+
+            return $results;
+        }
+
+        /**
+         * Get the total number of submissions from the queue.
+         *
+         * @param array $args Arguments for retrieving submissions.
+         * @return int
+         */
+        public function get_submissions_count_from_queue( $args = array() ) {
+            global $wpdb;
+            $table_name = $wpdb->prefix . 'akashic_form_queue';
+
+            $defaults = array(
+                'form_id'  => 0,
+                'status'   => 'completed',
+            );
+
+            $args = wp_parse_args( $args, $defaults );
+
+            $sql = "SELECT COUNT(id) FROM $table_name WHERE form_id = %d AND status = %s";
+
+            return (int) $wpdb->get_var( $wpdb->prepare( $sql, $args['form_id'], $args['status'] ) );
+        }
+
     }
 
 }

@@ -30,6 +30,7 @@ if (! class_exists('Akashic_Forms_Admin')) {
             add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
             add_action('admin_init', array($this, 'handle_force_sync'));
             add_action('admin_init', array($this, 'handle_clear_queue'));
+            add_action('admin_init', array($this, 'register_settings'));
         }
 
         /**
@@ -87,6 +88,15 @@ if (! class_exists('Akashic_Forms_Admin')) {
                 'manage_options',
                 'akashic-forms-queue',
                 array($this, 'akashic_forms_queue_page')
+            );
+
+            add_submenu_page(
+                'akashic-forms',
+                __('Settings', 'akashic-forms'),
+                __('Settings', 'akashic-forms'),
+                'manage_options',
+                'akashic-forms-settings',
+                array($this, 'akashic_forms_settings_page')
             );
         }
 
@@ -155,7 +165,7 @@ if (! class_exists('Akashic_Forms_Admin')) {
                     ),
                     'akashic_clear_submissions_' . $form_id
                 );
-                echo ' <a href="' . esc_url($clear_url) . '" class="page-title-action" style="color:#a00;" onclick="return confirm(\'' . __('Are you sure you want to permanently delete all submissions and related files for this form?', 'akashic-forms') . '\');">' . __('Clear Submissions', 'akashic-forms') . '</a>';
+                echo ' <a href="' . esc_url($clear_url) . '" class="page-title-action" style="color:#a00;" onclick="return confirm(\''. __('Are you sure you want to permanently delete all submissions and related files for this form?', 'akashic-forms') . '\');">' . __('Clear Submissions', 'akashic-forms') . '</a>';
             }
 
             echo '</h1>';
@@ -178,7 +188,7 @@ if (! class_exists('Akashic_Forms_Admin')) {
             echo '</div>';
 
             if ($form_id) {
-                $submissions_table = new Akashic_Forms_Submissions_List_Table($form_id);
+                $submissions_table = new Akashic_Forms_Submissions_List_Table($form_id, 'completed'); // Pass form_id and status
                 $submissions_table->prepare_items();
                 $submissions_table->display();
             } else {
@@ -575,6 +585,111 @@ if (! class_exists('Akashic_Forms_Admin')) {
 
             wp_safe_redirect(add_query_arg(array('page' => 'akashic-forms-queue', 'cleared' => 'true'), admin_url('admin.php')));
             exit;
+        }
+
+        /**
+         * Render the Settings admin page.
+         */
+        public function akashic_forms_settings_page()
+        {
+            ?>
+            <div class="wrap">
+                <h1><?php _e('Akashic Forms Settings', 'akashic-forms'); ?></h1>
+                <form method="post" action="options.php">
+                    <?php
+                    settings_fields('akashic_forms_settings_group');
+                    do_settings_sections('akashic-forms-settings');
+                    submit_button();
+                    ?>
+                </form>
+            </div>
+            <?php
+        }
+
+        /**
+         * Register settings.
+         */
+        public function register_settings()
+        {
+            register_setting(
+                'akashic_forms_settings_group',
+                'akashic_forms_cron_enabled',
+                array(
+                    'type'              => 'boolean',
+                    'sanitize_callback' => 'rest_sanitize_boolean',
+                    'default'           => true,
+                )
+            );
+
+            register_setting(
+                'akashic_forms_settings_group',
+                'akashic_forms_cron_interval',
+                array(
+                    'type'              => 'string',
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'default'           => 'five_minutes',
+                )
+            );
+
+            add_settings_section(
+                'akashic_forms_cron_section',
+                __('Cron Settings', 'akashic-forms'),
+                array($this, 'cron_section_callback'),
+                'akashic-forms-settings'
+            );
+
+            add_settings_field(
+                'akashic_forms_cron_enabled_field',
+                __('Enable Cron', 'akashic-forms'),
+                array($this, 'cron_enabled_field_callback'),
+                'akashic-forms-settings',
+                'akashic_forms_cron_section'
+            );
+
+            add_settings_field(
+                'akashic_forms_cron_interval_field',
+                __('Cron Interval', 'akashic-forms'),
+                array($this, 'cron_interval_field_callback'),
+                'akashic-forms-settings',
+                'akashic_forms_cron_section'
+            );
+        }
+
+        /**
+         * Cron section callback.
+         */
+        public function cron_section_callback()
+        {
+            echo '<p>' . __('Configure the cron job for processing the submission queue.', 'akashic-forms') . '</p>';
+            $timestamp = wp_next_scheduled('akashic_forms_process_queue');
+            if ($timestamp) {
+                echo '<p>' . sprintf(__('Next run: %s', 'akashic-forms'), get_date_from_gmt(date('Y-m-d H:i:s', $timestamp), 'Y-m-d H:i:s')) . '</p>';
+            }
+        }
+
+        /**
+         * Cron enabled field callback.
+         */
+        public function cron_enabled_field_callback()
+        {
+            $enabled = get_option('akashic_forms_cron_enabled', true);
+            echo '<input type="checkbox" name="akashic_forms_cron_enabled" value="1" ' . checked(1, $enabled, false) . ' />';
+        }
+
+        /**
+         * Cron interval field callback.
+         */
+        public function cron_interval_field_callback()
+        {
+            $interval = get_option('akashic_forms_cron_interval', 'five_minutes');
+            ?>
+            <select name="akashic_forms_cron_interval">
+                <option value="five_minutes" <?php selected($interval, 'five_minutes'); ?>><?php _e('Every 5 minutes', 'akashic-forms'); ?></option>
+                <option value="fifteen_minutes" <?php selected($interval, 'fifteen_minutes'); ?>><?php _e('Every 15 minutes', 'akashic-forms'); ?></option>
+                <option value="thirty_minutes" <?php selected($interval, 'thirty_minutes'); ?>><?php _e('Every 30 minutes', 'akashic-forms'); ?></option>
+                <option value="hourly" <?php selected($interval, 'hourly'); ?>><?php _e('Every hour', 'akashic-forms'); ?></option>
+            </select>
+            <?php
         }
     }
 }

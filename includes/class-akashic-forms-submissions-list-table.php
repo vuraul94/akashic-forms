@@ -175,8 +175,9 @@ if ( ! class_exists( 'Akashic_Forms_Submissions_List_Table' ) ) {
 
             $actions = array(
                 'delete' => sprintf(
-                    '<a href="%s" style="color:#a00;" onclick="return confirm(\'' . __( 'Are you sure you want to delete this submission?', 'akashic-forms' ) . '\');">%s</a>',
+                    '<a href="%s" style="color:#a00;" onclick="return confirm(%s);">%s</a>',
                     esc_url( $delete_url ),
+                    esc_js( __( 'Are you sure you want to delete this submission?', 'akashic-forms' ) ),
                     __( 'Delete', 'akashic-forms' )
                 ),
             );
