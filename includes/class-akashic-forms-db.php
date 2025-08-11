@@ -44,6 +44,7 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
                 submission_data longtext NOT NULL,
                 status varchar(20) NOT NULL DEFAULT 'pending',
                 failure_reason text DEFAULT NULL,
+                response longtext DEFAULT NULL,
                 created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
                 processing_started_at datetime DEFAULT NULL,
@@ -227,21 +228,37 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
                 'orderby'  => 'created_at',
                 'order'    => 'DESC',
                 'search'   => '',
+                'status'   => 'all',
             );
 
             $args = wp_parse_args( $args, $defaults );
 
-            $sql = "SELECT * FROM $table_name";
+            $where_clauses = array();
+            $sql_params = array();
 
             if ( ! empty( $args['search'] ) ) {
-                $sql .= " WHERE status LIKE '%%" . esc_sql( $wpdb->esc_like( $args['search'] ) ) . "%%'";
+                $where_clauses[] = "submission_data LIKE %s";
+                $sql_params[] = '%' . $wpdb->esc_like( $args['search'] ) . '%';
+            }
+
+            if ( 'all' !== $args['status'] ) {
+                $where_clauses[] = "status = %s";
+                $sql_params[] = $args['status'];
+            }
+
+            $sql = "SELECT * FROM $table_name";
+
+            if ( ! empty( $where_clauses ) ) {
+                $sql .= " WHERE " . implode( " AND ", $where_clauses );
             }
 
             $sql .= " ORDER BY " . esc_sql( $args['orderby'] ) . " " . esc_sql( $args['order'] );
-            $sql .= " LIMIT " . absint( $args['per_page'] );
-            $sql .= " OFFSET " . absint( ( $args['page'] - 1 ) * $args['per_page'] );
+            $sql .= " LIMIT %d";
+            $sql_params[] = absint( $args['per_page'] );
+            $sql .= " OFFSET %d";
+            $sql_params[] = absint( ( $args['page'] - 1 ) * $args['per_page'] );
 
-            $results = $wpdb->get_results( $sql );
+            $results = $wpdb->get_results( $wpdb->prepare( $sql, $sql_params ) );
 
             foreach ( $results as $result ) {
                 $result->submission_data = unserialize( $result->submission_data );
@@ -255,10 +272,25 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
          *
          * @return int
          */
-        public function get_queue_count() {
+        public function get_queue_count( $status = 'all' ) {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_queue';
-            return (int) $wpdb->get_var( "SELECT COUNT(id) FROM $table_name" );
+
+            $where_clause = '';
+            $sql_params = array();
+
+            if ( 'all' !== $status ) {
+                $where_clause = " WHERE status = %s";
+                $sql_params[] = $status;
+            }
+
+            $sql = "SELECT COUNT(id) FROM $table_name" . $where_clause;
+
+            if ( ! empty( $sql_params ) ) {
+                return (int) $wpdb->get_var( $wpdb->prepare( $sql, $sql_params ) );
+            } else {
+                return (int) $wpdb->get_var( $sql );
+            }
         }
 
         /**
@@ -320,6 +352,11 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
 
             if (isset($data['failure_reason'])) {
                 $update_data['failure_reason'] = $data['failure_reason'];
+                $update_format[] = '%s';
+            }
+
+            if (isset($data['response'])) {
+                $update_data['response'] = $data['response'];
                 $update_format[] = '%s';
             }
 

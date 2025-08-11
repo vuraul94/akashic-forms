@@ -42,6 +42,7 @@ if ( ! class_exists( 'Akashic_Forms_Queue_List_Table' ) ) {
                 'form_id'         => __( 'Form ID', 'akashic-forms' ),
                 'submission_data' => __( 'Submission Data', 'akashic-forms' ),
                 'status'          => __( 'Status', 'akashic-forms' ),
+                'response'        => __( 'Response', 'akashic-forms' ),
                 'created_at'      => __( 'Created At', 'akashic-forms' ),
                 'updated_at'      => __( 'Updated At', 'akashic-forms' ),
                 'time_to_timeout' => __( 'Time to Timeout', 'akashic-forms' ),
@@ -75,6 +76,7 @@ if ( ! class_exists( 'Akashic_Forms_Queue_List_Table' ) ) {
             $per_page     = 20;
             $current_page = $this->get_pagenum();
             $search_term  = isset( $_REQUEST['s'] ) ? sanitize_text_field( $_REQUEST['s'] ) : '';
+            $status       = isset( $_GET['status'] ) ? sanitize_text_field( $_GET['status'] ) : 'all';
 
             $db = new Akashic_Forms_DB();
 
@@ -84,10 +86,11 @@ if ( ! class_exists( 'Akashic_Forms_Queue_List_Table' ) ) {
                 'orderby'  => isset( $_REQUEST['orderby'] ) ? sanitize_text_field( $_REQUEST['orderby'] ) : 'created_at',
                 'order'    => isset( $_REQUEST['order'] ) ? sanitize_text_field( $_REQUEST['order'] ) : 'DESC',
                 'search'   => $search_term,
+                'status'   => $status,
             );
 
             $this->items = $db->get_all_submissions_from_queue( $args );
-            $total_items = $db->get_queue_count();
+            $total_items = $db->get_queue_count( $status );
 
             $this->set_pagination_args( array(
                 'total_items' => $total_items,
@@ -107,6 +110,7 @@ if ( ! class_exists( 'Akashic_Forms_Queue_List_Table' ) ) {
             switch ( $column_name ) {
                 case 'form_id':
                 case 'status':
+                case 'response':
                 case 'created_at':
                 case 'updated_at':
                     return $item->$column_name;
@@ -170,6 +174,33 @@ if ( ! class_exists( 'Akashic_Forms_Queue_List_Table' ) ) {
                 $modal_id = 'failure-reason-modal-' . $item->id;
                 echo '<a href="#TB_inline?width=600&height=550&inlineId=' . $modal_id . '" class="thickbox button">View Reason</a>';
                 $this->modals[$modal_id] = '<div id="' . $modal_id . '" style="display:none;"><h2>' . __( 'Failure Reason', 'akashic-forms' ) . '</h2><p>' . esc_html( $item->failure_reason ) . '</p></div>';
+            }
+        }
+
+        /**
+         * Display extra table navigation.
+         *
+         * @param string $which
+         */
+        protected function extra_tablenav( $which ) {
+            if ( 'top' === $which ) {
+                $current_status = isset( $_GET['status'] ) ? sanitize_text_field( $_GET['status'] ) : 'all';
+                ?>
+                <div class="alignleft actions">
+                    <form method="get">
+                        <input type="hidden" name="page" value="<?php echo esc_attr( $_REQUEST['page'] ); ?>" />
+                        <label for="filter-by-status" class="screen-reader-text"><?php _e( 'Filter by status', 'akashic-forms' ); ?></label>
+                        <select name="status" id="filter-by-status">
+                            <option value="all" <?php selected( $current_status, 'all' ); ?>><?php _e( 'All Statuses', 'akashic-forms' ); ?></option>
+                            <option value="pending" <?php selected( $current_status, 'pending' ); ?>><?php _e( 'Pending', 'akashic-forms' ); ?></option>
+                            <option value="processing" <?php selected( $current_status, 'processing' ); ?>><?php _e( 'Processing', 'akashic-forms' ); ?></option>
+                            <option value="failed" <?php selected( $current_status, 'failed' ); ?>><?php _e( 'Failed', 'akashic-forms' ); ?></option>
+                            <option value="completed" <?php selected( $current_status, 'completed' ); ?>><?php _e( 'Completed', 'akashic-forms' ); ?></option>
+                        </select>
+                        <?php submit_button( __( 'Filter', 'akashic-forms' ), 'button', 'filter_action', false ); ?>
+                    </form>
+                </div>
+                <?php
             }
         }
 

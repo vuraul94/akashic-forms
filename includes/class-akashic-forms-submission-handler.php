@@ -27,6 +27,7 @@ if ( ! class_exists( 'Akashic_Forms_Submission_Handler' ) ) {
          * Handle form submission via AJAX.
          */
         public function handle_ajax_submission() {
+            error_log( 'Akashic Forms: handle_ajax_submission - Processing form submission.' );
             // Always check the nonce for security.
             if ( ! isset( $_POST['akashic_form_nonce'] ) || ! wp_verify_nonce( $_POST['akashic_form_nonce'], 'akashic_submit_form' ) ) {
                 wp_send_json_error( array( 'message' => __( 'Security check failed.', 'akashic-forms' ) ) );
@@ -97,15 +98,23 @@ if ( ! class_exists( 'Akashic_Forms_Submission_Handler' ) ) {
                 wp_send_json_error( array( 'message' => $error_message ) );
             }
 
-            // Save submission to the database.
             $db = new Akashic_Forms_DB();
-            $submission_id = $db->insert_submission( $form_id, $submission_data );
 
-            if ( $submission_id ) {
-                // Send email notification.
-                $this->send_email_notification( $form_id, $submission_data );
+            // Add submission to the queue with 'pending' status initially
+            $queue_id = $db->add_submission_to_queue( $form_id, $submission_data );
+            error_log( 'Akashic Forms: Submission added to queue with ID: ' . $queue_id );
 
-                // Google Drive Integration.
+            if ( ! $queue_id ) {
+                wp_send_json_error( array( 'message' => __( 'There was an error adding your submission to the queue.', 'akashic-forms' ) ) );
+            }
+
+            $status = 'pending';
+            $response_data = null;
+            $failure_reason = null;
+            $spreadsheet_url = null; // Initialize spreadsheet URL
+
+            try {
+                // Attempt Google Drive Integration
                 $google_sheet_id = get_post_meta( $form_id, '_akashic_form_google_sheet_id', true );
                 $google_sheet_name = get_post_meta( $form_id, '_akashic_form_google_sheet_name', true );
 
@@ -113,29 +122,78 @@ if ( ! class_exists( 'Akashic_Forms_Submission_Handler' ) ) {
                     $google_drive = new Akashic_Forms_Google_Drive();
                     $headers = $google_drive->get_spreadsheet_headers( $google_sheet_id, $google_sheet_name );
 
+                    if ( is_wp_error( $headers ) ) {
+                        throw new Exception( 'Error fetching headers: ' . $headers->get_error_message() );
+                    }
+
                     if ( $headers ) {
-                        $sheet_values = array_fill_keys( $headers, '' );
+                        $sheet_values = array_fill_keys( $headers, '' ); // Initialize with empty strings for all headers
+                        $mapped_submission_data = array();
+
+                        // First, create a mapping from field_label to submission_data value
                         foreach ( $form_fields as $field ) {
                             $field_name = isset( $field['name'] ) ? $field['name'] : '';
                             $field_label = isset( $field['label'] ) ? $field['label'] : '';
                             if ( ! empty( $field_name ) && isset( $submission_data[ $field_name ] ) ) {
-                                if ( in_array( $field_label, $headers ) ) {
-                                    $value = is_array( $submission_data[ $field_name ] ) ? implode( ', ', $submission_data[ $field_name ] ) : $submission_data[ $field_name ];
-                                    $sheet_values[ $field_label ] = $value;
-                                }
+                                $value = is_array( $submission_data[ $field_name ] ) ? implode( ", ", $submission_data[ $field_name ] ) : $submission_data[ $field_name ];
+                                $mapped_submission_data[ $field_label ] = $value; // Map label to value
+                            }
+                        }
+
+                        // Now, populate sheet_values based on headers and mapped_submission_data
+                        foreach ( $headers as $header_label ) {
+                            if ( isset( $mapped_submission_data[ $header_label ] ) ) {
+                                $sheet_values[ $header_label ] = $mapped_submission_data[ $header_label ];
                             }
                         }
                         $sheet_values['Submission Date'] = current_time( 'mysql' );
-                        $google_drive->append_to_sheet( $google_sheet_id, $google_sheet_name, array_values($sheet_values) );
+                        $append_result = $google_drive->append_to_sheet( $google_sheet_id, $google_sheet_name, array_values($sheet_values) );
+
+                        if ( is_wp_error( $append_result ) ) {
+                            throw new Exception( 'Error appending to sheet: ' . $append_result->get_error_message() );
+                        }
+                        $response_data = 'Google Sheet updated successfully.';
+
+                        // Construct spreadsheet URL
+                        $spreadsheet_url = 'https://docs.google.com/spreadsheets/d/' . $google_sheet_id . '/edit#gid=0'; // Assuming gid=0 for the first sheet
+                        $response_data .= ' Spreadsheet Link: ' . $spreadsheet_url;
+
                     } else {
-                        // Log error if headers can't be fetched
-                        error_log('Akashic Forms: Could not fetch headers from Google Sheet.');
+                        throw new Exception('Could not fetch headers from Google Sheet.');
                     }
                 }
 
-                wp_send_json_success();
+                // Send email notification.
+                $this->send_email_notification( $form_id, $submission_data );
+                $response_data .= ' Email sent successfully.';
+
+                $status = 'completed';
+
+            } catch ( Exception $e ) {
+                $status = 'failed';
+                $failure_reason = $e->getMessage();
+                error_log( 'Akashic Forms: Submission processing failed for queue ID ' . $queue_id . ': ' . $failure_reason );
+            }
+
+            // Update the queue item status and response/failure reason
+            $update_data = array(
+                'status'         => $status,
+                'response'       => $response_data,
+                'failure_reason' => $failure_reason,
+            );
+            $update_result = $db->update_submission_in_queue( $queue_id, $update_data );
+            error_log( 'Akashic Forms: Queue item ' . $queue_id . ' updated with status ' . $status . '. Update result: ' . ( $update_result ? 'Success' : 'Failure' ) );
+
+
+            // Save submission to the main submissions table
+            $main_submission_id = $db->insert_submission( $form_id, $submission_data );
+            error_log( 'Akashic Forms: Main submission table insert ID: ' . $main_submission_id );
+
+
+            if ( 'completed' === $status ) {
+                wp_send_json_success( array( 'message' => __( 'Submission successful!', 'akashic-forms' ), 'spreadsheet_url' => $spreadsheet_url ) );
             } else {
-                wp_send_json_error( array( 'message' => __( 'There was an error saving your submission. Please try again.', 'akashic-forms' ) ) );
+                wp_send_json_error( array( 'message' => __( 'There was an error processing your submission. It has been added to the queue for retry.', 'akashic-forms' ), 'failure_reason' => $failure_reason ) );
             }
         }
 

@@ -36,8 +36,6 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
          * @return Google_Client|false
          */
         public function get_google_client() {
-            error_log( 'Akashic Forms Google Drive: get_google_client - client_id: ' . $this->client_id );
-            error_log( 'Akashic Forms Google Drive: get_google_client - client_secret: ' . $this->client_secret );
 
             if ( empty( $this->client_id ) || empty( $this->client_secret ) ) {
                 error_log( 'Akashic Forms Google Drive: get_google_client - Client ID or Client Secret is empty.' );
