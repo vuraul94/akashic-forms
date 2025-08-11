@@ -68,6 +68,8 @@ if ( ! class_exists( 'Akashic_Forms_Queue_Processor' ) ) {
          * @param bool $force Whether to force process failed submissions as well.
          */
         public function process_queue( $force = false ) {
+            set_transient('akashic_forms_cron_started', true, 5 * MINUTE_IN_SECONDS); // Set transient
+
             $db = new Akashic_Forms_DB();
 
             // Revert timed-out submissions
@@ -94,11 +96,11 @@ if ( ! class_exists( 'Akashic_Forms_Queue_Processor' ) ) {
                 $form_id = $submission->form_id;
                 $form_data = $submission->submission_data;
 
-                $spreadsheet_id = get_post_meta( $form_id, '_akashic_forms_google_sheet_id', true );
-                $sheet_name = get_post_meta( $form_id, '_akashic_forms_google_sheet_name', true );
+                $spreadsheet_id = get_post_meta( $form_id, '_akashic_form_google_sheet_id', true );
+                $sheet_name = get_post_meta( $form_id, '_akashic_form_google_sheet_name', true );
 
                 if ( empty( $spreadsheet_id ) || empty( $sheet_name ) ) {
-                    $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => 'Google Sheet not configured for this form.' ) );
+                    $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => "Google Sheet not configured for the form $form_id." ) );
                     continue;
                 }
                 
@@ -129,7 +131,7 @@ if ( ! class_exists( 'Akashic_Forms_Queue_Processor' ) ) {
                         $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => $result->get_error_message() ) );
                     }
                 } elseif ( ! $result ) {
-                    $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => 'Unknown error.' ) );
+                    // $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => 'Unknown error.' ) );
                 } else {
                     $db->update_submission_in_queue( $submission->id, array( 'status' => 'completed' ) );
                 }

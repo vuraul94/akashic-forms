@@ -24,6 +24,7 @@ jQuery(document).ready(function($) {
                 form_data: data
             },
             success: function(response) {
+                
                 if ('message' === submissionAction) {
                     $('#akashic-form-container-' + formId + ' .akashic-form').hide();
                     $('#akashic-form-container-' + formId + ' .akashic-form-message').show();
@@ -37,6 +38,7 @@ jQuery(document).ready(function($) {
                 alert('An error occurred. Please try again.');
             }
         });
+        
     });
 
     $('.akashic-form-modal-close').on('click', function() {

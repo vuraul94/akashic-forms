@@ -1,4 +1,5 @@
 <?php
+// use Google\Service\Sheets;
 /**
  * Google Drive Integration for Akashic Forms.
  *
@@ -45,7 +46,7 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
             $client->setClientId( $this->client_id );
             $client->setClientSecret( $this->client_secret );
             $client->setRedirectUri( $this->redirect_uri );
-            $client->addScope( Google_Service_Sheets::SPREADSHEETS );
+            $client->addScope( \Google\Service\Sheets::SPREADSHEETS ); // Fully qualified
             $client->setAccessType( 'offline' );
             $client->setPrompt( 'select_account consent' );
 
@@ -102,9 +103,9 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
                 return false; // Not authenticated.
             }
 
-            $service = new Google_Service_Sheets( $client );
+            $service = new \Google\Service\Sheets( $client ); // Fully qualified
 
-            $body = new Google_Service_Sheets_ValueRange( array(
+            $body = new \Google\Service\Sheets\ValueRange( array( // Fully qualified
                 'values' => array( $values )
             ) );
 
@@ -115,7 +116,7 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
             try {
                 $result = $service->spreadsheets_values->append( $spreadsheet_id, $range, $body, $params );
                 return true;
-            } catch ( Google_Service_Exception $e ) {
+            } catch ( \Google\Service\Exception $e ) { // Fully qualified
                 if ( 429 == $e->getCode() ) {
                     return new WP_Error( 'rate_limit_exceeded', 'Google Sheets API rate limit exceeded.' );
                 }
@@ -142,7 +143,7 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
                 return false; // Not authenticated.
             }
 
-            $service = new Google_Service_Sheets( $client );
+            $service = new \Google\Service\Sheets( $client ); // Fully qualified
 
             try {
                 $response = $service->spreadsheets_values->get( $spreadsheet_id, $sheet_name . '!1:1' );

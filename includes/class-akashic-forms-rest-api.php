@@ -42,6 +42,8 @@ if ( ! class_exists( 'Akashic_Forms_REST_API' ) ) {
             $form_id = $request->get_param( 'form_id' );
             $form_data = $request->get_param( 'form_data' );
 
+            error_log( 'Akashic Forms: handle_sync_request - form_id: ' . $form_id );
+
             if ( empty( $form_id ) || empty( $form_data ) ) {
                 return new WP_REST_Response( array( 'message' => 'Missing form_id or form_data.' ), 400 );
             }
@@ -50,8 +52,11 @@ if ( ! class_exists( 'Akashic_Forms_REST_API' ) ) {
             $db->insert_submission( $form_id, $form_data ); // Insert into akashic_form_submissions table
 
             $google_drive = new Akashic_Forms_Google_Drive();
-            $spreadsheet_id = get_post_meta( $form_id, '_akashic_forms_google_sheet_id', true );
-            $sheet_name = get_post_meta( $form_id, '_akashic_forms_google_sheet_name', true );
+            $spreadsheet_id = get_post_meta( $form_id, '_akashic_form_google_sheet_id', true ); // Corrected meta key
+            $sheet_name = get_post_meta( $form_id, '_akashic_form_google_sheet_name', true ); // Corrected meta key
+
+            error_log( 'Akashic Forms: handle_sync_request - spreadsheet_id: ' . $spreadsheet_id );
+            error_log( 'Akashic Forms: handle_sync_request - sheet_name: ' . $sheet_name );
 
             if ( empty( $spreadsheet_id ) || empty( $sheet_name ) ) {
                 // If no sheet is configured, just queue it
@@ -62,6 +67,10 @@ if ( ! class_exists( 'Akashic_Forms_REST_API' ) ) {
             $headers = $google_drive->get_spreadsheet_headers( $spreadsheet_id, $sheet_name );
             if ( false === $headers ) {
                 $form_fields = get_post_meta( $form_id, '_akashic_forms_fields', true );
+                // Ensure $form_fields is an array
+                if ( ! is_array( $form_fields ) ) {
+                    $form_fields = array();
+                }
                 $new_headers = array();
                 foreach ( $form_fields as $field ) {
                     $new_headers[] = $field['label'];
