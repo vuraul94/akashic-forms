@@ -28,6 +28,8 @@ if (! class_exists('Akashic_Forms_Admin')) {
             add_action('admin_init', array($this, 'register_google_drive_settings'));
             add_action('admin_init', array($this, 'handle_google_drive_disconnect'));
             add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
+            add_action('admin_init', array($this, 'handle_force_sync'));
+            add_action('admin_init', array($this, 'handle_clear_queue'));
         }
 
         /**
@@ -76,6 +78,15 @@ if (! class_exists('Akashic_Forms_Admin')) {
                 'manage_options',
                 'akashic-forms-google-drive-settings',
                 array($this, 'akashic_forms_google_drive_settings_page')
+            );
+
+            add_submenu_page(
+                'akashic-forms',
+                __('Queue', 'akashic-forms'),
+                __('Queue', 'akashic-forms'),
+                'manage_options',
+                'akashic-forms-queue',
+                array($this, 'akashic_forms_queue_page')
             );
         }
 
@@ -468,6 +479,101 @@ if (! class_exists('Akashic_Forms_Admin')) {
 
             // Redirect back to the submissions page with a success message.
             wp_safe_redirect(add_query_arg(array('page' => 'akashic-forms-submissions', 'form_id' => $_GET['form_id'], 'deleted' => 'true'), admin_url('admin.php')));
+            exit;
+        }
+
+        /**
+         * Render the Queue admin page.
+         */
+        public function akashic_forms_queue_page()
+        {
+            if (!class_exists('WP_List_Table')) {
+                require_once(ABSPATH . 'wp-admin/includes/class-wp-list-table.php');
+            }
+
+            require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-queue-list-table.php';
+
+            echo '<div class="wrap">';
+            echo '<h1>' . __('Submission Queue', 'akashic-forms') . '</h1>';
+
+            $force_sync_url = wp_nonce_url(
+                add_query_arg(
+                    array(
+                        'action'  => 'force_sync',
+                    ),
+                    admin_url('admin.php?page=akashic-forms-queue')
+                ),
+                'akashic_force_sync'
+            );
+            echo '<a href="' . esc_url($force_sync_url) . '" class="page-title-action">' . __('Force Sync', 'akashic-forms') . '</a>';
+
+            $clear_queue_url = wp_nonce_url(
+                add_query_arg(
+                    array(
+                        'action'  => 'clear_queue',
+                    ),
+                    admin_url('admin.php?page=akashic-forms-queue')
+                ),
+                'akashic_clear_queue'
+            );
+            echo ' <a href="' . esc_url($clear_queue_url) . '" class="page-title-action" style="color:#a00;" onclick="return confirm(\' . esc_js(__( \'Are you sure you want to permanently delete all submissions in the queue?\', \'akashic-forms\' )) . \'\');">' . __('Clear Queue', 'akashic-forms') . '</a>';
+
+            if (isset($_GET['synced']) && $_GET['synced']) {
+                echo '<div class="notice notice-success is-dismissible"><p>' . __('Queue processing started.', 'akashic-forms') . '</p></div>';
+            }
+
+            if (isset($_GET['cleared']) && 'true' === $_GET['cleared']) {
+                echo '<div class="notice notice-success is-dismissible"><p>' . __('The queue has been cleared.', 'akashic-forms') . '</p></div>';
+            }
+
+            $queue_table = new Akashic_Forms_Queue_List_Table();
+            $queue_table->prepare_items();
+            $queue_table->display();
+
+            echo '</div>';
+        }
+
+        /**
+         * Handle the force sync action.
+         */
+        public function handle_force_sync()
+        {
+            if (!isset($_GET['action']) || 'force_sync' !== $_GET['action']) {
+                return;
+            }
+
+            if (!current_user_can('manage_options')) {
+                return;
+            }
+
+            check_admin_referer('akashic_force_sync');
+
+            $queue_processor = new Akashic_Forms_Queue_Processor();
+            $queue_processor->process_queue( true );
+
+            wp_safe_redirect(add_query_arg(array('page' => 'akashic-forms-queue', 'synced' => 'true'), admin_url('admin.php')));
+            exit;
+        }
+
+        /**
+         * Handle the clear queue action.
+         */
+        public function handle_clear_queue()
+        {
+            if (!isset($_GET['action']) || 'clear_queue' !== $_GET['action']) {
+                return;
+            }
+
+            if (!current_user_can('manage_options')) {
+                return;
+            }
+
+            check_admin_referer('akashic_clear_queue');
+
+            $db = new Akashic_Forms_DB();
+            $db->clear_queue();
+
+            wp_safe_redirect(add_query_arg(array('page' => 'akashic-forms-queue', 'cleared' => 'true'), admin_url('admin.php')));
             exit;
         }
     }

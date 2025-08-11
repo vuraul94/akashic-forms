@@ -1,37 +1,39 @@
 jQuery(document).ready(function($) {
-    
+
     $('.akashic-form').on('submit', function(e) {
-    console.log('akashic-forms-public.js loaded');
-        var form = $(this);
-        var formId = form.data('form-id');
-        var submissionAction = form.data('submission-action');
-
-        if ('redirect' === submissionAction) {
-            return;
-        }
-
         e.preventDefault();
 
-        var formData = new FormData(this);
+        const form = $(this);
+        const formId = form.data('form-id');
+        const formData = new FormData(this);
+        const submissionAction = form.data('submission-action');
+
+        let data = {};
+        for (let [key, value] of formData.entries()) {
+            data[key] = value;
+        }
+
         $.ajax({
-            url: akashicForms.ajax_url,
+            url: akashicForms.rest_url + '/sync',
             type: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
+            beforeSend: function(xhr) {
+                xhr.setRequestHeader('X-WP-Nonce', akashicForms.nonce);
+            },
+            data: {
+                form_id: formId,
+                form_data: data
+            },
             success: function(response) {
-                if (response.success) {
-                    if ('message' === submissionAction) {
-                        $('#akashic-form-container-' + formId + ' .akashic-form').hide();
-                        $('#akashic-form-container-' + formId + ' .akashic-form-message').show();
-                    } else if ('modal' === submissionAction) {
-                        $('#akashic-form-modal-' + formId).show();
-                    }
-                } else {
-                    alert(response.data.message);
+                if ('message' === submissionAction) {
+                    $('#akashic-form-container-' + formId + ' .akashic-form').hide();
+                    $('#akashic-form-container-' + formId + ' .akashic-form-message').show();
+                } else if ('modal' === submissionAction) {
+                    $('#akashic-form-modal-' + formId).show();
+                } else if ('redirect' === submissionAction) {
+                    window.location.href = form.attr('action');
                 }
             },
-            error: function() {
+            error: function(response) {
                 alert('An error occurred. Please try again.');
             }
         });

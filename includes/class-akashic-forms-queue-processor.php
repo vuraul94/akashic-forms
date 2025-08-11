@@ -1,0 +1,110 @@
+<?php
+/**
+ * Queue Processor for Akashic Forms.
+ *
+ * @package AkashicForms
+ */
+
+// Exit if accessed directly.
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+if ( ! class_exists( 'Akashic_Forms_Queue_Processor' ) ) {
+
+    class Akashic_Forms_Queue_Processor {
+
+        /**
+         * Constructor.
+         */
+        public function __construct() {
+            add_action( 'init', array( $this, 'schedule_cron' ) );
+            add_action( 'akashic_forms_process_queue', array( $this, 'process_queue' ) );
+        }
+
+        /**
+         * Schedule the cron job.
+         */
+        public function schedule_cron() {
+            if ( ! wp_next_scheduled( 'akashic_forms_process_queue' ) ) {
+                wp_schedule_event( time(), 'five_minutes', 'akashic_forms_process_queue' );
+            }
+        }
+
+        /**
+         * Process the submission queue.
+         *
+         * @param bool $force Whether to force process failed submissions as well.
+         */
+        public function process_queue( $force = false ) {
+            $db = new Akashic_Forms_DB();
+
+            // Revert timed-out submissions
+            $db->revert_timed_out_submissions();
+
+            if ( $force ) {
+                $submissions = $db->get_pending_and_failed_submissions_from_queue( 10 ); // Process 10 at a time
+            } else {
+                $submissions = $db->get_pending_submissions_from_queue( 10 ); // Process 10 at a time
+            }
+
+            if ( empty( $submissions ) ) {
+                return;
+            }
+
+            $google_drive = new Akashic_Forms_Google_Drive();
+
+            foreach ( $submissions as $submission ) {
+                $db->update_submission_in_queue( $submission->id, array(
+                    'status'                  => 'processing',
+                    'processing_started_at' => current_time( 'mysql', true ),
+                ) );
+
+                $form_id = $submission->form_id;
+                $form_data = $submission->submission_data;
+
+                $spreadsheet_id = get_post_meta( $form_id, '_akashic_forms_google_sheet_id', true );
+                $sheet_name = get_post_meta( $form_id, '_akashic_forms_google_sheet_name', true );
+
+                if ( empty( $spreadsheet_id ) || empty( $sheet_name ) ) {
+                    $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => 'Google Sheet not configured for this form.' ) );
+                    continue;
+                }
+                
+                $headers = $google_drive->get_spreadsheet_headers( $spreadsheet_id, $sheet_name );
+                if ( false === $headers ) {
+                    $form_fields = get_post_meta( $form_id, '_akashic_forms_fields', true );
+                    $new_headers = array();
+                    foreach ( $form_fields as $field ) {
+                        $new_headers[] = $field['label'];
+                    }
+                    $google_drive->append_to_sheet( $spreadsheet_id, $sheet_name, $new_headers );
+                    $headers = $new_headers;
+                }
+
+                $values = array();
+                foreach ( $headers as $header ) {
+                    $values[] = isset( $form_data[ $header ] ) ? $form_data[ $header ] : '';
+                }
+
+                $result = $google_drive->append_to_sheet( $spreadsheet_id, $sheet_name, $values );
+
+                if ( is_wp_error( $result ) ) {
+                    if ( 'rate_limit_exceeded' === $result->get_error_code() ) {
+                        $db->update_submission_in_queue( $submission->id, array( 'status' => 'pending' ) ); // Revert to pending
+                        // Stop processing this batch, will retry on next cron run
+                        break;
+                    } else {
+                        $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => $result->get_error_message() ) );
+                    }
+                } elseif ( ! $result ) {
+                    $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => 'Unknown error.' ) );
+                } else {
+                    $db->update_submission_in_queue( $submission->id, array( 'status' => 'completed' ) );
+                }
+            }
+        }
+    }
+
+    new Akashic_Forms_Queue_Processor();
+}

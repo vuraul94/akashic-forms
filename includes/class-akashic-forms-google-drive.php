@@ -115,8 +115,15 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
             try {
                 $result = $service->spreadsheets_values->append( $spreadsheet_id, $range, $body, $params );
                 return true;
+            } catch ( Google_Service_Exception $e ) {
+                if ( 429 == $e->getCode() ) {
+                    return new WP_Error( 'rate_limit_exceeded', 'Google Sheets API rate limit exceeded.' );
+                }
+                // Log other errors for debugging.
+                error_log( 'Akashic Forms Google Drive Error: ' . $e->getMessage() );
+                return false;
             } catch ( Exception $e ) {
-                // Log error for debugging.
+                // Log other errors for debugging.
                 error_log( 'Akashic Forms Google Drive Error: ' . $e->getMessage() );
                 return false;
             }
