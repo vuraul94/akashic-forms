@@ -58,7 +58,6 @@ if ( ! class_exists( 'Akashic_Forms_Shortcode' ) ) {
             ?>
             <div id="akashic-form-container-<?php echo esc_attr( $form_id ); ?>">
                 <form action="" method="post" class="akashic-form" enctype="multipart/form-data" data-form-id="<?php echo esc_attr( $form_id ); ?>" data-submission-action="<?php echo esc_attr( $submission_action ); ?>">
-                    <h3><?php echo esc_html( $form_post->post_title ); ?></h3>
                     <?php wp_nonce_field( 'akashic_submit_form', 'akashic_form_nonce' ); ?>
                     <input type="hidden" name="akashic_form_id" value="<?php echo esc_attr( $form_id ); ?>" />
                     <input type="hidden" name="action" value="akashic_form_submit" />
@@ -105,7 +104,7 @@ if ( ! class_exists( 'Akashic_Forms_Shortcode' ) ) {
                             continue;
                         }
                         ?>
-                        <p>
+                        <div class="field-container field-container--<?php echo esc_attr( $field_name ); ?> <?php echo esc_attr( $field_type ); ?> <?php echo esc_attr( $field_parent_fieldset ); ?>">
                         <?php if ( $field_show_label && 'hidden' !== $field_type ) : ?>
                             <label for="<?php echo esc_attr( $field_name ); ?>"><?php echo esc_html( $field_label ); ?></label>
                         <?php endif; ?>
@@ -176,7 +175,7 @@ if ( ! class_exists( 'Akashic_Forms_Shortcode' ) ) {
                                 break;
                         }
                         ?>
-                        </p>
+                        </div>
                         <?php
                     }
                     ?>
