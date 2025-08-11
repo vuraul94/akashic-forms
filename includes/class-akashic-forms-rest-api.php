@@ -64,10 +64,16 @@ if ( ! class_exists( 'Akashic_Forms_REST_API' ) ) {
                 return new WP_REST_Response( array( 'message' => 'Submission queued successfully.' ), 200 );
             }
 
-            $headers = $google_drive->get_spreadsheet_headers( $spreadsheet_id, $sheet_name );
-            if ( false === $headers ) {
+                        $headers = $google_drive->get_spreadsheet_headers( $spreadsheet_id, $sheet_name );
+            if ( is_wp_error( $headers ) ) {
+                // If getting headers failed, queue the submission
+                $db->add_submission_to_queue( $form_id, $form_data );
+                return new WP_REST_Response( array( 'message' => 'Failed to get spreadsheet headers, submission queued.' ), 200 );
+            }
+
+            // If headers were empty, try to create them
+            if ( empty( $headers ) ) {
                 $form_fields = get_post_meta( $form_id, '_akashic_forms_fields', true );
-                // Ensure $form_fields is an array
                 if ( ! is_array( $form_fields ) ) {
                     $form_fields = array();
                 }
@@ -75,7 +81,13 @@ if ( ! class_exists( 'Akashic_Forms_REST_API' ) ) {
                 foreach ( $form_fields as $field ) {
                     $new_headers[] = $field['label'];
                 }
-                $google_drive->append_to_sheet( $spreadsheet_id, $sheet_name, $new_headers );
+                // Append headers to sheet
+                $append_headers_result = $google_drive->append_to_sheet( $spreadsheet_id, $sheet_name, $new_headers );
+                if ( is_wp_error( $append_headers_result ) || ! $append_headers_result ) {
+                    // If appending headers failed, queue the submission
+                    $db->add_submission_to_queue( $form_id, $form_data );
+                    return new WP_REST_Response( array( 'message' => 'Failed to create spreadsheet headers, submission queued.' ), 200 );
+                }
                 $headers = $new_headers;
             }
 

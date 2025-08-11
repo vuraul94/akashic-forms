@@ -36,7 +36,11 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
          * @return Google_Client|false
          */
         public function get_google_client() {
+            error_log( 'Akashic Forms Google Drive: get_google_client - client_id: ' . $this->client_id );
+            error_log( 'Akashic Forms Google Drive: get_google_client - client_secret: ' . $this->client_secret );
+
             if ( empty( $this->client_id ) || empty( $this->client_secret ) ) {
+                error_log( 'Akashic Forms Google Drive: get_google_client - Client ID or Client Secret is empty.' );
                 return false;
             }
 
@@ -62,6 +66,7 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
                     $client->fetchAccessTokenWithRefreshToken( $refresh_token );
                     update_option( 'akashic_forms_google_access_token', $client->getAccessToken() );
                 } else {
+                    error_log( 'Akashic Forms Google Drive: get_google_client - Access token expired and no refresh token available. Re-authentication required.' );
                     return false; // No refresh token, need to re-authenticate.
                 }
             }
