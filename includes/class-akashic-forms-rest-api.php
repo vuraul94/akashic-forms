@@ -90,9 +90,48 @@ if (! class_exists('Akashic_Forms_REST_API')) {
                 }
                 $upload_overrides = array('test_form' => false);
 
+                $errors = array(); // Initialize errors array
+
                 foreach ($_FILES as $file_field_name => $file_data) {
                     error_log('Akashic Forms REST API: Attempting to process file field: ' . $file_field_name . ' with data: ' . print_r($file_data, true));
                     if (isset($field_types_map[$file_field_name]) && 'file' === $field_types_map[$file_field_name]) {
+                        // Get field definition for this file field
+                        $current_field_def = null;
+                        foreach ($form_fields_definition as $def) {
+                            if (isset($def['name']) && $def['name'] === $file_field_name) {
+                                $current_field_def = $def;
+                                break;
+                            }
+                        }
+
+                        if ($current_field_def) {
+                            $allowed_formats = isset($current_field_def['allowed_formats']) ? array_map('trim', explode(',', $current_field_def['allowed_formats'])) : array();
+                            $max_size_mb = isset($current_field_def['max_size']) ? floatval($current_field_def['max_size']) : 0;
+                            $allowed_formats_message = isset($current_field_def['allowed_formats_message']) ? sanitize_text_field($current_field_def['allowed_formats_message']) : __( 'Invalid file format.', 'akashic-forms' );
+                            $max_size_message = isset($current_field_def['max_size_message']) ? sanitize_text_field($current_field_def['max_size_message']) : __( 'File size exceeds the maximum allowed limit.', 'akashic-forms' );
+                            $field_required = isset($current_field_def['required']) && '1' === $current_field_def['required'];
+
+                            // If the field is not required and no file was uploaded, skip validation
+                            if (!$field_required && $file_data['error'] === UPLOAD_ERR_NO_FILE) {
+                                continue; // Skip to next file field
+                            }
+
+                            $file_extension = pathinfo($file_data['name'], PATHINFO_EXTENSION);
+                            $file_size_mb_actual = $file_data['size'] / (1024 * 1024); // Convert bytes to MB
+
+                            // Validate file format
+                            if (!empty($allowed_formats) && !in_array(strtolower($file_extension), $allowed_formats)) {
+                                $errors[$file_field_name] = $allowed_formats_message;
+                                // Do not continue here, allow other validations to run for the same file
+                            }
+
+                            // Validate file size
+                            if ($max_size_mb > 0 && $file_size_mb_actual > $max_size_mb) {
+                                $errors[$file_field_name] = $max_size_message;
+                                // Do not continue here, allow other validations to run for the same file
+                            }
+                        }
+
                         if ($file_data['error'] === UPLOAD_ERR_OK) {
                             // Generate a unique filename
                             $file_info = pathinfo($file_data['name']);
@@ -116,6 +155,11 @@ if (! class_exists('Akashic_Forms_REST_API')) {
                 }
             }
             error_log('Akashic Forms REST API: Final form_data before processing: ' . print_r($form_data, true));
+
+            // If there are any validation errors, send them back.
+            if ( ! empty( $errors ) ) {
+                return new WP_REST_Response( array( 'errors' => $errors ), 400 );
+            }
 
             if (empty($form_id)) {
                 return new WP_REST_Response(array('message' => 'Missing form_id.'), 400);

@@ -59,6 +59,26 @@ if ( ! class_exists( 'Akashic_Forms_Submission_Handler' ) ) {
                 // Handle file uploads.
                 if ( 'file' === $field_type ) {
                     if ( ! empty( $_FILES[ $field_name ] ) && $_FILES[ $field_name ]['error'] === UPLOAD_ERR_OK ) {
+                        $allowed_formats = isset( $field['allowed_formats'] ) ? array_map( 'trim', explode( ',', $field['allowed_formats'] ) ) : array();
+                        $max_size_mb = isset( $field['max_size'] ) ? floatval( $field['max_size'] ) : 0;
+                        $allowed_formats_message = isset( $field['allowed_formats_message'] ) ? sanitize_text_field( $field['allowed_formats_message'] ) : __( 'Invalid file format.', 'akashic-forms' );
+                        $max_size_message = isset( $field['max_size_message'] ) ? sanitize_text_field( $field['max_size_message'] ) : __( 'File size exceeds the maximum allowed limit.', 'akashic-forms' );
+
+                        $file_extension = pathinfo( $_FILES[ $field_name ]['name'], PATHINFO_EXTENSION );
+                        $file_size_mb = $_FILES[ $field_name ]['size'] / (1024 * 1024); // Convert bytes to MB
+
+                        // Validate file format
+                        if ( ! empty( $allowed_formats ) && ! in_array( strtolower( $file_extension ), $allowed_formats ) ) {
+                            $errors[ $field_name ] = $allowed_formats_message;
+                            continue; // Skip to next field if format is invalid
+                        }
+
+                        // Validate file size
+                        if ( $max_size_mb > 0 && $file_size_mb > $max_size_mb ) {
+                            $errors[ $field_name ] = $max_size_message;
+                            continue; // Skip to next field if size is too large
+                        }
+
                         if ( ! function_exists( 'wp_handle_upload' ) ) {
                             require_once( ABSPATH . 'wp-admin/includes/file.php' );
                         }

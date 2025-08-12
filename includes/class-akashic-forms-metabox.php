@@ -191,9 +191,13 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                                 $fieldRow.find('.akashic-field-setting-parent-fieldset').show();
                                 break;
                             case 'textarea':
+                                $fieldRow.find('.akashic-field-setting-required').show();
+                                $fieldRow.find('.akashic-field-setting-parent-fieldset').show();
+                                break;
                             case 'file':
                                 $fieldRow.find('.akashic-field-setting-required').show();
                                 $fieldRow.find('.akashic-field-setting-parent-fieldset').show();
+                                $fieldRow.find('.akashic-field-setting-file').show();
                                 break;
                             case 'number':
                             case 'range':
@@ -350,6 +354,10 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
             $field_parent_fieldset = isset( $field['parent_fieldset'] ) ? $field['parent_fieldset'] : '';
             $field_show_label = isset( $field['show_label'] ) ? $field['show_label'] : '1';
             $field_placeholder = isset( $field['placeholder'] ) ? $field['placeholder'] : '';
+            $field_allowed_formats = isset( $field['allowed_formats'] ) ? $field['allowed_formats'] : '';
+            $field_max_size = isset( $field['max_size'] ) ? $field['max_size'] : '';
+            $field_allowed_formats_message = isset( $field['allowed_formats_message'] ) ? $field['allowed_formats_message'] : '';
+            $field_max_size_message = isset( $field['max_size_message'] ) ? $field['max_size_message'] : '';
             ?>
             <div class="akashic-field-row" style="border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; cursor: move;" data-field-type="<?php echo esc_attr( $field_type ); ?>">
                 <h4 class="akashic-field-handle"><span class="dashicons dashicons-move"></span> <?php _e( 'Field', 'akashic-forms' ); ?></h4>
@@ -430,6 +438,26 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                     <input type="text" name="akashic_form_fields[<?php echo esc_attr( $key ); ?>][parent_fieldset]" id="akashic_form_fields_<?php echo esc_attr( $key ); ?>_parent_fieldset" value="<?php echo esc_attr( $field_parent_fieldset ); ?>" class="large-text" />
                     <p class="description"><?php _e( 'Enter the unique name of the fieldset this field belongs to. Leave empty if not part of a fieldset.', 'akashic-forms' ); ?></p>
                 </p>
+
+                <div class="akashic-field-setting akashic-field-setting-file">
+                    <p>
+                        <label for="akashic_form_fields[<?php echo esc_attr( $key ); ?>][allowed_formats]"><?php _e( 'Allowed Formats (comma-separated):', 'akashic-forms' ); ?></label>
+                        <input type="text" name="akashic_form_fields[<?php echo esc_attr( $key ); ?>][allowed_formats]" id="akashic_form_fields_<?php echo esc_attr( $key ); ?>_allowed_formats" value="<?php echo esc_attr( $field_allowed_formats ); ?>" class="large-text" />
+                        <p class="description"><?php _e( 'e.g., jpg, png, pdf', 'akashic-forms' ); ?></p>
+                    </p>
+                    <p>
+                        <label for="akashic_form_fields[<?php echo esc_attr( $key ); ?>][allowed_formats_message]"><?php _e( 'Allowed Formats Error Message:', 'akashic-forms' ); ?></label>
+                        <input type="text" name="akashic_form_fields[<?php echo esc_attr( $key ); ?>][allowed_formats_message]" id="akashic_form_fields_<?php echo esc_attr( $key ); ?>_allowed_formats_message" value="<?php echo esc_attr( $field_allowed_formats_message ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'e.g., Invalid file format. Please upload a JPG, PNG, or PDF.', 'akashic-forms' ); ?>" />
+                    </p>
+                    <p>
+                        <label for="akashic_form_fields[<?php echo esc_attr( $key ); ?>][max_size]"><?php _e( 'Max File Size (in MB):', 'akashic-forms' ); ?></label>
+                        <input type="number" name="akashic_form_fields[<?php echo esc_attr( $key ); ?>][max_size]" id="akashic_form_fields_<?php echo esc_attr( $key ); ?>_max_size" value="<?php echo esc_attr( $field_max_size ); ?>" class="small-text" />
+                    </p>
+                    <p>
+                        <label for="akashic_form_fields[<?php echo esc_attr( $key ); ?>][max_size_message]"><?php _e( 'Max File Size Error Message:', 'akashic-forms' ); ?></label>
+                        <input type="text" name="akashic_form_fields[<?php echo esc_attr( $key ); ?>][max_size_message]" id="akashic_form_fields_<?php echo esc_attr( $key ); ?>_max_size_message" value="<?php echo esc_attr( $field_max_size_message ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'e.g., File size exceeds the maximum allowed limit.', 'akashic-forms' ); ?>" />
+                    </p>
+                </div>
                 <p>
                     <button type="button" class="button akashic-remove-field"><?php _e( 'Remove Field', 'akashic-forms' ); ?></button>
                 </p>
@@ -504,6 +532,10 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                         'parent_fieldset' => sanitize_text_field( $field['parent_fieldset'] ),
                         'show_label' => isset( $field['show_label'] ) ? '1' : '0',
                         'placeholder' => sanitize_text_field( $field['placeholder'] ),
+                        'allowed_formats' => sanitize_text_field( $field['allowed_formats'] ),
+                        'max_size' => sanitize_text_field( $field['max_size'] ),
+                        'allowed_formats_message' => sanitize_text_field( $field['allowed_formats_message'] ),
+                        'max_size_message' => sanitize_text_field( $field['max_size_message'] ),
                     );
 
                     // Save options for select, radio, checkbox, and datalist fields.

@@ -36,7 +36,26 @@ jQuery(document).ready(function($) {
                 }
             },
             error: function(response) {
-                alert('An error occurred. Please try again.');
+                // Clear previous errors
+                form.find('.akashic-field-error').remove();
+                form.find('.akashic-error-field').removeClass('akashic-error-field');
+
+                if (response.responseJSON && response.responseJSON.errors) {
+                    const errors = response.responseJSON.errors;
+                    for (const fieldName in errors) {
+                        if (errors.hasOwnProperty(fieldName)) {
+                            const errorMessage = errors[fieldName];
+                            console.log('Processing error for field:', fieldName, 'Message:', errorMessage);
+                            const fieldContainer = form.find('.field-container--' + fieldName);
+                            if (fieldContainer.length) {
+                                fieldContainer.addClass('akashic-error-field-container'); // Add class to container
+                                fieldContainer.append('<p class="akashic-field-error">' + errorMessage + '</p>');
+                            }
+                        }
+                    }
+                } else {
+                    alert('An unknown error occurred. Please try again.');
+                }
             },
             complete: function() { 
                 submitButton.val(originalButtonText).prop('disabled', false); 
@@ -52,6 +71,15 @@ jQuery(document).ready(function($) {
     $(window).on('click', function(e) {
         if ($(e.target).hasClass('akashic-form-modal')) {
             $(e.target).hide();
+        }
+    });
+
+    // Clear error message when file input changes
+    $('.akashic-form').on('change', 'input[type="file"]', function() {
+        const fieldContainer = $(this).closest('.field-container--' + $(this).attr('name'));
+        if (fieldContainer.length) {
+            fieldContainer.removeClass('akashic-error-field-container');
+            fieldContainer.find('.akashic-field-error').remove();
         }
     });
 });
