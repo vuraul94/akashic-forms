@@ -53,6 +53,14 @@ if ( ! class_exists( 'Akashic_Forms_Shortcode' ) ) {
             $submission_action = get_post_meta( $form_id, '_akashic_form_submission_action', true );
             $form_message = get_post_meta( $form_id, '_akashic_form_message', true );
             $modal_message = get_post_meta( $form_id, '_akashic_form_modal_message', true );
+            $submit_button_text = get_post_meta( $form_id, '_akashic_form_submit_button_text', true );
+            if ( empty( $submit_button_text ) ) {
+                $submit_button_text = __( 'Submit', 'akashic-forms' );
+            }
+            $submitting_button_text = get_post_meta( $form_id, '_akashic_form_submitting_button_text', true );
+            if ( empty( $submitting_button_text ) ) {
+                $submitting_button_text = __( 'Submitting...', 'akashic-forms' );
+            }
 
             ob_start();
             ?>
@@ -186,7 +194,7 @@ if ( ! class_exists( 'Akashic_Forms_Shortcode' ) ) {
                     }
                     ?>
                     <p>
-                        <input type="submit" name="akashic_form_submit" value="<?php esc_attr_e( 'Submit', 'akashic-forms' ); ?>" />
+                        <input type="submit" name="akashic_form_submit" value="<?php echo esc_attr( $submit_button_text ); ?>" data-submitting-text="<?php echo esc_attr( $submitting_button_text ); ?>" />
                     </p>
                 </form>
                 <div class="akashic-form-message" style="display: none;"><?php echo wp_kses_post( $form_message ); ?></div>

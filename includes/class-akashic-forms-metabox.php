@@ -79,6 +79,15 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
             $redirect_url = get_post_meta( $post->ID, '_akashic_form_redirect_url', true );
             $form_message = get_post_meta( $post->ID, '_akashic_form_message', true );
             $modal_message = get_post_meta( $post->ID, '_akashic_form_modal_message', true );
+             $submit_button_text = get_post_meta( $post->ID, '_akashic_form_submit_button_text', true );
+            if ( empty( $submit_button_text ) ) {
+                $submit_button_text = __( 'Submit', 'akashic-forms' );
+            }
+            $submitting_button_text = get_post_meta( $post->ID, '_akashic_form_submitting_button_text', true );
+            if ( empty( $submitting_button_text ) ) {
+                $submitting_button_text = __( 'Submitting...', 'akashic-forms' );
+            }
+
             ?>
             <p>
                 <label for="akashic_form_submission_action"><?php _e( 'Action After Submission:', 'akashic-forms' ); ?></label>
@@ -102,6 +111,14 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                     <?php wp_editor( $modal_message, 'akashic_form_modal_message', array( 'textarea_name' => 'akashic_form_modal_message' ) ); ?>
                 </div>
             </div>
+            <p>
+                <label for="akashic_form_submit_button_text"><?php _e( 'Submit Button Text:', 'akashic-forms' ); ?></label>
+                <input type="text" name="akashic_form_submit_button_text" id="akashic_form_submit_button_text" value="<?php echo esc_attr( $submit_button_text ); ?>" class="large-text" />
+            </p>
+            <p>
+                <label for="akashic_form_submitting_button_text"><?php _e( 'Submitting Button Text:', 'akashic-forms' ); ?></label>
+                <input type="text" name="akashic_form_submitting_button_text" id="akashic_form_submitting_button_text" value="<?php echo esc_attr( $submitting_button_text ); ?>" class="large-text" />
+            </p>
             <script>
                 jQuery(document).ready(function($) {
                     $('#akashic_form_submission_action').on('change', function() {

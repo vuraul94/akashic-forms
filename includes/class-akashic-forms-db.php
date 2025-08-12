@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Database class for Akashic Forms.
  *
@@ -6,25 +7,28 @@
  */
 
 // Exit if accessed directly.
-if ( ! defined( 'ABSPATH' ) ) {
+if (! defined('ABSPATH')) {
     exit;
 }
 
-if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
+if (! class_exists('Akashic_Forms_DB')) {
 
-    class Akashic_Forms_DB {
+    class Akashic_Forms_DB
+    {
 
         /**
          * Constructor.
          */
-        public function __construct() {
-            register_activation_hook( AKASHIC_FORMS_PLUGIN_DIR . 'akashic-forms.php', array( $this, 'create_tables' ) );
+        public function __construct()
+        {
+            register_activation_hook(AKASHIC_FORMS_PLUGIN_DIR . 'akashic-forms.php', array($this, 'create_tables'));
         }
 
         /**
          * Create the custom database tables.
          */
-        public function create_tables() {
+        public function create_tables()
+        {
             $this->create_submissions_table();
             $this->create_queue_table();
         }
@@ -32,7 +36,8 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
         /**
          * Create the custom database table for the queue.
          */
-        public function create_queue_table() {
+        public function create_queue_table()
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_queue';
 
@@ -51,14 +56,15 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
                 PRIMARY KEY  (id)
             ) $charset_collate;";
 
-            require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
-            dbDelta( $sql );
+            require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+            dbDelta($sql);
         }
 
         /**
          * Create the custom database table for submissions.
          */
-        public function create_submissions_table() {
+        public function create_submissions_table()
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_submissions';
 
@@ -72,8 +78,8 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
                 PRIMARY KEY  (id)
             ) $charset_collate;";
 
-            require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
-            dbDelta( $sql );
+            require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+            dbDelta($sql);
         }
 
         /**
@@ -83,14 +89,31 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
          * @param array $data    The submission data.
          * @return int|false The ID of the inserted row on success, false on failure.
          */
-        public function insert_submission( $form_id, $data ) {
+        public function insert_submission($form_id, $data)
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_submissions';
 
-            $serialized_data = serialize( $data );
+            $serialized_data = serialize($data);
+
+            $insert_data = array(
+                'form_id'       => $form_id,
+                'submission_data' => $serialized_data,
+            );
+            $insert_format = array(
+                '%d',
+                '%s',
+            );
+
+            if (isset($data['submitted_at'])) {
+                $insert_data['submitted_at'] = $data['submitted_at'];
+                $insert_format[] = '%s';
+            }
 
             $result = $wpdb->insert(
                 $table_name,
+                $insert_data,
+                $insert_format,
                 array(
                     'form_id'       => $form_id,
                     'submission_data' => $serialized_data,
@@ -101,7 +124,7 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
                 )
             );
 
-            if ( $result ) {
+            if ($result) {
                 return $wpdb->insert_id;
             }
 
@@ -114,14 +137,15 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
          * @param int $form_id The ID of the form.
          * @return array An array of submission objects.
          */
-        public function get_submissions( $form_id ) {
+        public function get_submissions($form_id)
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_submissions';
 
-            $results = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM $table_name WHERE form_id = %d ORDER BY submitted_at DESC", $form_id ) );
+            $results = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table_name WHERE form_id = %d ORDER BY submitted_at DESC", $form_id));
 
-            foreach ( $results as $result ) {
-                $result->submission_data = unserialize( $result->submission_data );
+            foreach ($results as $result) {
+                $result->submission_data = unserialize($result->submission_data);
             }
 
             return $results;
@@ -133,14 +157,15 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
          * @param int $submission_id The ID of the submission.
          * @return object|null The submission object, or null if not found.
          */
-        public function get_submission( $submission_id ) {
+        public function get_submission($submission_id)
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_submissions';
 
-            $result = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table_name WHERE id = %d", $submission_id ) );
+            $result = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $submission_id));
 
-            if ( $result ) {
-                $result->submission_data = unserialize( $result->submission_data );
+            if ($result) {
+                $result->submission_data = unserialize($result->submission_data);
             }
 
             return $result;
@@ -152,14 +177,15 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
          * @param int $submission_id The ID of the submission to delete.
          * @return int|false The number of rows deleted, or false on error.
          */
-        public function delete_submission( $submission_id ) {
+        public function delete_submission($submission_id)
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_submissions';
 
             return $wpdb->delete(
                 $table_name,
-                array( 'id' => $submission_id ),
-                array( '%d' )
+                array('id' => $submission_id),
+                array('%d')
             );
         }
 
@@ -169,14 +195,15 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
          * @param int $form_id The ID of the form.
          * @return int|false The number of rows deleted, or false on error.
          */
-        public function delete_submissions( $form_id ) {
+        public function delete_submissions($form_id)
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_submissions';
 
             return $wpdb->delete(
                 $table_name,
-                array( 'form_id' => $form_id ),
-                array( '%d' )
+                array('form_id' => $form_id),
+                array('%d')
             );
         }
 
@@ -187,11 +214,12 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
          * @param array $data    The submission data.
          * @return int|false The ID of the inserted row on success, false on failure.
          */
-        public function add_submission_to_queue( $form_id, $data ) {
+        public function add_submission_to_queue($form_id, $data)
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_queue';
 
-            $serialized_data = serialize( $data );
+            $serialized_data = serialize($data);
 
             $result = $wpdb->insert(
                 $table_name,
@@ -205,7 +233,7 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
                 )
             );
 
-            if ( $result ) {
+            if ($result) {
                 return $wpdb->insert_id;
             }
 
@@ -218,7 +246,8 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
          * @param array $args Arguments for retrieving submissions.
          * @return array An array of submission objects.
          */
-        public function get_all_submissions_from_queue( $args = array() ) {
+        public function get_all_submissions_from_queue($args = array())
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_queue';
 
@@ -231,37 +260,37 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
                 'status'   => 'all',
             );
 
-            $args = wp_parse_args( $args, $defaults );
+            $args = wp_parse_args($args, $defaults);
 
             $where_clauses = array();
             $sql_params = array();
 
-            if ( ! empty( $args['search'] ) ) {
+            if (! empty($args['search'])) {
                 $where_clauses[] = "submission_data LIKE %s";
-                $sql_params[] = '%' . $wpdb->esc_like( $args['search'] ) . '%';
+                $sql_params[] = '%' . $wpdb->esc_like($args['search']) . '%';
             }
 
-            if ( 'all' !== $args['status'] ) {
+            if ('all' !== $args['status']) {
                 $where_clauses[] = "status = %s";
                 $sql_params[] = $args['status'];
             }
 
             $sql = "SELECT * FROM $table_name";
 
-            if ( ! empty( $where_clauses ) ) {
-                $sql .= " WHERE " . implode( " AND ", $where_clauses );
+            if (! empty($where_clauses)) {
+                $sql .= " WHERE " . implode(" AND ", $where_clauses);
             }
 
-            $sql .= " ORDER BY " . esc_sql( $args['orderby'] ) . " " . esc_sql( $args['order'] );
+            $sql .= " ORDER BY " . esc_sql($args['orderby']) . " " . esc_sql($args['order']);
             $sql .= " LIMIT %d";
-            $sql_params[] = absint( $args['per_page'] );
+            $sql_params[] = absint($args['per_page']);
             $sql .= " OFFSET %d";
-            $sql_params[] = absint( ( $args['page'] - 1 ) * $args['per_page'] );
+            $sql_params[] = absint(($args['page'] - 1) * $args['per_page']);
 
-            $results = $wpdb->get_results( $wpdb->prepare( $sql, $sql_params ) );
+            $results = $wpdb->get_results($wpdb->prepare($sql, $sql_params));
 
-            foreach ( $results as $result ) {
-                $result->submission_data = unserialize( $result->submission_data );
+            foreach ($results as $result) {
+                $result->submission_data = unserialize($result->submission_data);
             }
 
             return $results;
@@ -272,24 +301,25 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
          *
          * @return int
          */
-        public function get_queue_count( $status = 'all' ) {
+        public function get_queue_count($status = 'all')
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_queue';
 
             $where_clause = '';
             $sql_params = array();
 
-            if ( 'all' !== $status ) {
+            if ('all' !== $status) {
                 $where_clause = " WHERE status = %s";
                 $sql_params[] = $status;
             }
 
             $sql = "SELECT COUNT(id) FROM $table_name" . $where_clause;
 
-            if ( ! empty( $sql_params ) ) {
-                return (int) $wpdb->get_var( $wpdb->prepare( $sql, $sql_params ) );
+            if (! empty($sql_params)) {
+                return (int) $wpdb->get_var($wpdb->prepare($sql, $sql_params));
             } else {
-                return (int) $wpdb->get_var( $sql );
+                return (int) $wpdb->get_var($sql);
             }
         }
 
@@ -299,14 +329,15 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
          * @param int $limit The maximum number of submissions to retrieve.
          * @return array An array of submission objects.
          */
-        public function get_pending_submissions_from_queue( $limit = 10 ) {
+        public function get_pending_submissions_from_queue($limit = 10)
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_queue';
 
-            $results = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM $table_name WHERE status = 'pending' ORDER BY created_at ASC LIMIT %d", $limit ) );
+            $results = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table_name WHERE status = 'pending' ORDER BY created_at ASC LIMIT %d", $limit));
 
-            foreach ( $results as $result ) {
-                $result->submission_data = unserialize( $result->submission_data );
+            foreach ($results as $result) {
+                $result->submission_data = unserialize($result->submission_data);
             }
 
             return $results;
@@ -318,14 +349,15 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
          * @param int $limit The maximum number of submissions to retrieve.
          * @return array An array of submission objects.
          */
-        public function get_pending_and_failed_submissions_from_queue( $limit = 10 ) {
+        public function get_pending_and_failed_submissions_from_queue($limit = 10)
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_queue';
 
-            $results = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM $table_name WHERE status = 'pending' OR status = 'failed' ORDER BY created_at ASC LIMIT %d", $limit ) );
+            $results = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table_name WHERE status = 'pending' OR status = 'failed' ORDER BY created_at ASC LIMIT %d", $limit));
 
-            foreach ( $results as $result ) {
-                $result->submission_data = unserialize( $result->submission_data );
+            foreach ($results as $result) {
+                $result->submission_data = unserialize($result->submission_data);
             }
 
             return $results;
@@ -338,7 +370,8 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
          * @param string $status        The new status.
          * @return int|false The number of rows updated, or false on error.
          */
-        public function update_submission_in_queue( $submission_id, $data ) {
+        public function update_submission_in_queue($submission_id, $data)
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_queue';
 
@@ -372,9 +405,9 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
             return $wpdb->update(
                 $table_name,
                 $update_data,
-                array( 'id' => $submission_id ),
+                array('id' => $submission_id),
                 $update_format,
-                array( '%d' )
+                array('%d')
             );
         }
 
@@ -384,40 +417,43 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
          * @param int $submission_id The ID of the submission to delete.
          * @return int|false The number of rows deleted, or false on error.
          */
-        public function delete_submission_from_queue( $submission_id ) {
+        public function delete_submission_from_queue($submission_id)
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_queue';
 
             return $wpdb->delete(
                 $table_name,
-                array( 'id' => $submission_id ),
-                array( '%d' )
+                array('id' => $submission_id),
+                array('%d')
             );
         }
 
         /**
          * Revert timed-out submissions.
          */
-        public function revert_timed_out_submissions() {
+        public function revert_timed_out_submissions()
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_queue';
             $timeout    = 5 * MINUTE_IN_SECONDS;
 
             $sql = $wpdb->prepare(
                 "UPDATE $table_name SET status = 'pending', processing_started_at = NULL WHERE status = 'processing' AND processing_started_at < %s",
-                date( 'Y-m-d H:i:s', time() - $timeout )
+                date('Y-m-d H:i:s', time() - $timeout)
             );
 
-            $wpdb->query( $sql );
+            $wpdb->query($sql);
         }
 
         /**
          * Clear the queue.
          */
-        public function clear_queue() {
+        public function clear_queue()
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_queue';
-            $wpdb->query( "TRUNCATE TABLE $table_name" );
+            $wpdb->query("TRUNCATE TABLE $table_name");
         }
 
         /**
@@ -426,7 +462,8 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
          * @param array $args Arguments for retrieving submissions.
          * @return array An array of submission objects.
          */
-        public function get_submissions_from_queue( $args = array() ) {
+        public function get_submissions_from_queue($args = array())
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_queue';
 
@@ -439,18 +476,18 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
                 'status'   => 'completed',
             );
 
-            $args = wp_parse_args( $args, $defaults );
+            $args = wp_parse_args($args, $defaults);
 
             $sql = "SELECT * FROM $table_name WHERE form_id = %d AND status = %s";
 
-            $sql .= " ORDER BY " . esc_sql( $args['orderby'] ) . " " . esc_sql( $args['order'] );
-            $sql .= " LIMIT " . absint( $args['per_page'] );
-            $sql .= " OFFSET " . absint( ( $args['page'] - 1 ) * $args['per_page'] );
+            $sql .= " ORDER BY " . esc_sql($args['orderby']) . " " . esc_sql($args['order']);
+            $sql .= " LIMIT " . absint($args['per_page']);
+            $sql .= " OFFSET " . absint(($args['page'] - 1) * $args['per_page']);
 
-            $results = $wpdb->get_results( $wpdb->prepare( $sql, $args['form_id'], $args['status'] ) );
+            $results = $wpdb->get_results($wpdb->prepare($sql, $args['form_id'], $args['status']));
 
-            foreach ( $results as $result ) {
-                $result->submission_data = unserialize( $result->submission_data );
+            foreach ($results as $result) {
+                $result->submission_data = unserialize($result->submission_data);
             }
 
             return $results;
@@ -462,7 +499,8 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
          * @param array $args Arguments for retrieving submissions.
          * @return int
          */
-        public function get_submissions_count_from_queue( $args = array() ) {
+        public function get_submissions_count_from_queue($args = array())
+        {
             global $wpdb;
             $table_name = $wpdb->prefix . 'akashic_form_queue';
 
@@ -471,15 +509,13 @@ if ( ! class_exists( 'Akashic_Forms_DB' ) ) {
                 'status'   => 'completed',
             );
 
-            $args = wp_parse_args( $args, $defaults );
+            $args = wp_parse_args($args, $defaults);
 
             $sql = "SELECT COUNT(id) FROM $table_name WHERE form_id = %d AND status = %s";
 
-            return (int) $wpdb->get_var( $wpdb->prepare( $sql, $args['form_id'], $args['status'] ) );
+            return (int) $wpdb->get_var($wpdb->prepare($sql, $args['form_id'], $args['status']));
         }
-
     }
-
 }
 
 new Akashic_Forms_DB();

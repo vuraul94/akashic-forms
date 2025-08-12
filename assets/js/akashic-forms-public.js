@@ -7,17 +7,22 @@ jQuery(document).ready(function($) {
         const formId = form.data('form-id');
         const formData = new FormData(this);
         const submissionAction = form.data('submission-action');
+        const submitButton = form.find('input[type="submit"][name="akashic_form_submit"]'); // Get the submit button
+        const originalButtonText = submitButton.val(); // Store original text
+        const submittingButtonText = submitButton.data('submitting-text') || 'Submitting...'; // Get submitting text
 
         let data = {};
         for (let [key, value] of formData.entries()) {
             data[key] = value;
         }
+        data['submitted_at'] = new Date().toISOString();
 
         $.ajax({
             url: akashicForms.rest_url + '/sync',
             type: 'POST',
             beforeSend: function(xhr) {
                 xhr.setRequestHeader('X-WP-Nonce', akashicForms.nonce);
+                submitButton.val(submittingButtonText).prop('disabled', true); 
             },
             data: {
                 form_id: formId,
@@ -36,6 +41,9 @@ jQuery(document).ready(function($) {
             },
             error: function(response) {
                 alert('An error occurred. Please try again.');
+            },
+            complete: function() { 
+                submitButton.val(originalButtonText).prop('disabled', false); 
             }
         });
         
