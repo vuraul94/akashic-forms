@@ -94,6 +94,14 @@ if (! class_exists('Akashic_Forms_REST_API')) {
                     error_log('Akashic Forms REST API: Attempting to process file field: ' . $file_field_name . ' with data: ' . print_r($file_data, true));
                     if (isset($field_types_map[$file_field_name]) && 'file' === $field_types_map[$file_field_name]) {
                         if ($file_data['error'] === UPLOAD_ERR_OK) {
+                            // Generate a unique filename
+                            $file_info = pathinfo($file_data['name']);
+                            $file_extension = isset($file_info['extension']) ? '.' . $file_info['extension'] : '';
+                            $new_filename = uniqid() . $file_extension;
+
+                            // Temporarily change the file name in $file_data for wp_handle_upload
+                            $file_data['name'] = $new_filename;
+
                             $uploaded_file = wp_handle_upload($file_data, $upload_overrides);
                             if (isset($uploaded_file['file'])) {
                                 $form_data[$file_field_name] = $uploaded_file['url'];
