@@ -9,13 +9,10 @@ jQuery(document).ready(function($) {
         const submissionAction = form.data('submission-action');
         const submitButton = form.find('input[type="submit"][name="akashic_form_submit"]'); // Get the submit button
         const originalButtonText = submitButton.val(); // Store original text
-        const submittingButtonText = submitButton.data('submitting-text') || 'Submitting...'; // Get submitting text
+        const submittingButtonText = submitButton.data('submitting-text') || 'Sending...'; // Get submitting text
 
-        let data = {};
-        for (let [key, value] of formData.entries()) {
-            data[key] = value;
-        }
-        data['submitted_at'] = new Date().toISOString();
+        formData.append('form_id', formId); // Append form_id directly
+        formData.append('submitted_at', new Date().toISOString()); // Append submitted_at directly
 
         $.ajax({
             url: akashicForms.rest_url + '/sync',
@@ -24,10 +21,9 @@ jQuery(document).ready(function($) {
                 xhr.setRequestHeader('X-WP-Nonce', akashicForms.nonce);
                 submitButton.val(submittingButtonText).prop('disabled', true); 
             },
-            data: {
-                form_id: formId,
-                form_data: data
-            },
+            data: formData, // Send the FormData object directly
+            processData: false, // Don't process the data
+            contentType: false, // Don't set content type,
             success: function(response) {
                 
                 if ('message' === submissionAction) {

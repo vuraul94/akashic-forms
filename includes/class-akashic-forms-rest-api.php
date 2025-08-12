@@ -44,11 +44,73 @@ if (! class_exists('Akashic_Forms_REST_API')) {
          */
         public function handle_sync_request($request)
         {
-            $form_id = $request->get_param('form_id');
-            $form_data = $request->get_param('form_data');
+            error_log('Akashic Forms REST API: handle_sync_request entered.');
+            error_log( 'Akashic Forms REST API: Received $_FILES: ' . print_r( $_FILES, true ) );
 
-            if (empty($form_id) || empty($form_data)) {
-                return new WP_REST_Response(array('message' => 'Missing form_id or form_data.'), 400);
+            $form_id = $request->get_param('form_id');
+            error_log('Akashic Forms REST API: form_id: ' . $form_id);
+
+            $submitted_at = $request->get_param('submitted_at');
+            error_log('Akashic Forms REST API: submitted_at: ' . $submitted_at);
+            error_log('Akashic Forms REST API: form_id and submitted_at received. form_id: ' . $form_id . ', submitted_at: ' . $submitted_at);
+
+            $all_params = $request->get_params();
+            $form_data = array();
+
+            // Get form fields definition to identify file types
+            $form_fields_definition = get_post_meta($form_id, '_akashic_form_fields', true);
+            if (!is_array($form_fields_definition)) {
+                $form_fields_definition = array();
+            }
+            error_log('Akashic Forms REST API: Form fields definition retrieved: ' . print_r($form_fields_definition, true));
+            $field_types_map = array();
+            foreach ($form_fields_definition as $field_def) {
+                if (isset($field_def['name']) && isset($field_def['type'])) {
+                    $field_types_map[$field_def['name']] = $field_def['type'];
+                }
+            }
+            error_log('Akashic Forms REST API: Field Types Map: ' . print_r($field_types_map, true));
+
+            // Process regular fields
+            foreach ($all_params as $key => $value) {
+                if (!in_array($key, ['form_id', 'submitted_at', 'action', '_wpnonce', '_wp_http_referer'])) {
+                    if (isset($field_types_map[$key]) && 'file' === $field_types_map[$key]) {
+                        continue;
+                    }
+                    $form_data[$key] = $value;
+                }
+            }
+            error_log('Akashic Forms REST API: Form data reconstructed (before file processing): ' . print_r($form_data, true));
+
+            // Process file uploads from $_FILES
+            if (!empty($_FILES)) {
+                error_log('Akashic Forms REST API: Processing file uploads...');
+                if (!function_exists('wp_handle_upload')) {
+                    require_once(ABSPATH . 'wp-admin/includes/file.php');
+                }
+                $upload_overrides = array('test_form' => false);
+
+                foreach ($_FILES as $file_field_name => $file_data) {
+                    error_log('Akashic Forms REST API: Attempting to process file field: ' . $file_field_name . ' with data: ' . print_r($file_data, true));
+                    if (isset($field_types_map[$file_field_name]) && 'file' === $field_types_map[$file_field_name]) {
+                        if ($file_data['error'] === UPLOAD_ERR_OK) {
+                            $uploaded_file = wp_handle_upload($file_data, $upload_overrides);
+                            if (isset($uploaded_file['file'])) {
+                                $form_data[$file_field_name] = $uploaded_file['url'];
+                                error_log('Akashic Forms REST API: File URL added to form_data: ' . $form_data[$file_field_name]);
+                            } else {
+                                error_log('Akashic Forms REST API: File upload error for ' . $file_field_name . ': ' . $uploaded_file['error']);
+                            }
+                        } else if ($file_data['error'] !== UPLOAD_ERR_NO_FILE) {
+                            error_log('Akashic Forms REST API: File upload error for ' . $file_field_name . ': ' . $file_data['error']);
+                        }
+                    }
+                }
+            }
+            error_log('Akashic Forms REST API: Final form_data before processing: ' . print_r($form_data, true));
+
+            if (empty($form_id)) {
+                return new WP_REST_Response(array('message' => 'Missing form_id.'), 400);
             }
 
             $db = new Akashic_Forms_DB();
@@ -66,7 +128,7 @@ if (! class_exists('Akashic_Forms_REST_API')) {
 
             try {
                 // Insert into akashic_form_submissions table
-                $db->insert_submission($form_id, $form_data);
+                $db->insert_submission($form_id, $form_data, $submitted_at);
 
                 $google_drive = new Akashic_Forms_Google_Drive();
                 $spreadsheet_id = get_post_meta($form_id, '_akashic_form_google_sheet_id', true);
@@ -78,12 +140,14 @@ if (! class_exists('Akashic_Forms_REST_API')) {
                         throw new Exception('Failed to get spreadsheet headers: ' . $headers->get_error_message());
                     }
 
+                    // Define form_fields here, so it's always available for mapping
+                    $form_fields = get_post_meta($form_id, '_akashic_form_fields', true);
+                    if (! is_array($form_fields)) {
+                        $form_fields = array();
+                    }
+
                     // If headers were empty, try to create them
                     if (empty($headers)) {
-                        $form_fields = get_post_meta($form_id, '_akashic_form_fields', true); // Corrected meta key
-                        if (! is_array($form_fields)) {
-                            $form_fields = array();
-                        }
                         $new_headers = array();
                         foreach ($form_fields as $field) {
                             if (isset($field['label'])) {
@@ -98,33 +162,29 @@ if (! class_exists('Akashic_Forms_REST_API')) {
                         $headers = $new_headers;
                     }
 
-                    $sheet_values = array_fill_keys( $headers, '' ); // Initialize with empty strings for all headers
+                    $sheet_values = array_fill_keys( $headers, '' );
                     $mapped_form_data = array();
 
                     // Assuming form_data keys are field names, and we need to map them to labels.
                     // This requires knowing the mapping between field names and labels.
                     // The form_fields meta data is needed here.
-                    $form_fields = get_post_meta($form_id, '_akashic_form_fields', true);
                     if (is_array($form_fields)) {
                         foreach ($form_fields as $field) {
                             $field_name = isset($field['name']) ? $field['name'] : '';
                             $field_label = isset($field['label']) ? $field['label'] : '';
-                            $field_type = isset($field['type']) ? $field['type'] : 'text'; // Get field type
+                            $field_type = isset($field['type']) ? $field['type'] : 'text';
 
                             if (!empty($field_name) && isset($form_data[$field_name])) {
                                 $value = '';
                                 switch ($field_type) {
                                     case 'checkbox':
-                                        // If it's an array, it's multiple checkboxes.
                                         if (is_array($form_data[$field_name])) {
                                             $value = implode(", ", array_map('sanitize_text_field', $form_data[$field_name]));
                                         } else {
-                                            // Singular checkbox: if set, value is '1', else '0'.
-                                            $value = '1'; // Assuming if it's set, it's checked.
+                                            $value = '1';
                                         }
                                         break;
                                     case 'select':
-                                        // Check if it's a multi-select
                                         if (is_array($form_data[$field_name])) {
                                             $value = implode(", ", array_map('sanitize_text_field', $form_data[$field_name]));
                                         } else {
@@ -140,7 +200,6 @@ if (! class_exists('Akashic_Forms_REST_API')) {
                                 }
                                 $mapped_form_data[$field_label] = $value;
                             } else if (!empty($field_name) && 'checkbox' === $field_type) {
-                                // Explicitly handle unchecked singular checkboxes for REST API
                                 $mapped_form_data[$field_label] = '0';
                             }
                         }
@@ -153,6 +212,7 @@ if (! class_exists('Akashic_Forms_REST_API')) {
                         }
                     }
 
+                    $sheet_values['Submission Date'] = current_time( 'mysql' );
                     $append_data_result = $google_drive->append_to_sheet($spreadsheet_id, $sheet_name, array_values($sheet_values));
 
                     if (is_wp_error($append_data_result) || ! $append_data_result) {
@@ -160,14 +220,14 @@ if (! class_exists('Akashic_Forms_REST_API')) {
                     }
 
                     $response_data = 'Google Sheet updated successfully.';
-                    $spreadsheet_url = 'https://docs.google.com/spreadsheets/d/' . $spreadsheet_id . '/edit#gid=0'; // Assuming gid=0 for the first sheet
+                    $spreadsheet_url = 'https://docs.google.com/spreadsheets/d/' . $spreadsheet_id . '/edit#gid=0';
                     $response_data .= ' Spreadsheet Link: ' . $spreadsheet_url;
 
                 } else {
                     $response_data = 'No Google Sheet configured for this form.';
                 }
 
-                $status = 'completed'; // Mark as completed if all successful
+                $status = 'completed';
 
             } catch (Exception $e) {
                 $status = 'failed';
