@@ -515,6 +515,25 @@ if (! class_exists('Akashic_Forms_DB')) {
 
             return (int) $wpdb->get_var($wpdb->prepare($sql, $args['form_id'], $args['status']));
         }
+
+        /**
+         * Check if a value is unique for a specific field in a form.
+         *
+         * @param int    $form_id    The ID of the form.
+         * @param string $field_name The name of the field.
+         * @param string $value      The value to check.
+         * @return bool True if the value is unique, false otherwise.
+         */
+        public function is_value_unique( $form_id, $field_name, $value ) {
+            $submissions = $this->get_submissions( $form_id );
+
+            foreach ( $submissions as $submission ) {
+                if ( isset( $submission->submission_data[ $field_name ] ) && $submission->submission_data[ $field_name ] === $value ) {
+                    return false;
+                }
+            }
+            return true;
+        }
     }
 }
 

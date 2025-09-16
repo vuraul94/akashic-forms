@@ -52,9 +52,6 @@ if ( ! class_exists( 'Akashic_Forms_Queue_Processor' ) ) {
             $enabled = get_option( 'akashic_forms_cron_enabled', true );
             $interval = get_option( 'akashic_forms_cron_interval', 'five_minutes' );
 
-            // Clear existing schedules to prevent duplicates or old intervals.
-            wp_clear_scheduled_hook( 'akashic_forms_process_queue' );
-
             if ( $enabled ) {
                 if ( ! wp_next_scheduled( 'akashic_forms_process_queue' ) ) {
                     wp_schedule_event( time(), $interval, 'akashic_forms_process_queue' );
@@ -68,17 +65,16 @@ if ( ! class_exists( 'Akashic_Forms_Queue_Processor' ) ) {
          * @param bool $force Whether to force process failed submissions as well.
          */
         public function process_queue( $force = false ) {
-            set_transient('akashic_forms_cron_started', true, 5 * MINUTE_IN_SECONDS); // Set transient
+            set_transient('akashic_forms_cron_started', true, 5 * MINUTE_IN_SECONDS);
 
             $db = new Akashic_Forms_DB();
 
-            // Revert timed-out submissions
             $db->revert_timed_out_submissions();
 
             if ( $force ) {
-                $submissions = $db->get_pending_and_failed_submissions_from_queue( 10 ); // Process 10 at a time
+                $submissions = $db->get_pending_and_failed_submissions_from_queue( 10 );
             } else {
-                $submissions = $db->get_pending_submissions_from_queue( 10 ); // Process 10 at a time
+                $submissions = $db->get_pending_submissions_from_queue( 10 );
             }
 
             if ( empty( $submissions ) ) {
@@ -96,40 +92,69 @@ if ( ! class_exists( 'Akashic_Forms_Queue_Processor' ) ) {
                 $form_id = $submission->form_id;
                 $form_data = $submission->submission_data;
 
-                $spreadsheet_id = get_post_meta( $form_id, '_akashic_form_google_sheet_id', true ); // Corrected meta key
-                $sheet_name = get_post_meta( $form_id, '_akashic_form_google_sheet_name', true ); // Corrected meta key
+                $spreadsheet_id = get_post_meta( $form_id, '_akashic_form_google_sheet_id', true );
+                $sheet_name = get_post_meta( $form_id, '_akashic_form_google_sheet_name', true );
 
                 if ( empty( $spreadsheet_id ) || empty( $sheet_name ) ) {
                     $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => "Google Sheet not configured for the form $form_id." ) );
                     continue;
                 }
 
-                // Get headers
                 $headers_result = $google_drive->get_spreadsheet_headers( $spreadsheet_id, $sheet_name );
                 if ( is_wp_error( $headers_result ) ) {
                     $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => 'Failed to get spreadsheet headers: ' . $headers_result->get_error_message() ) );
                     continue;
                 }
                 $headers = $headers_result;
+                if (empty($headers)) {
+                    $form_fields = get_post_meta($form_id, '_akashic_form_fields', true);
+                    if (!is_array($form_fields)) {
+                        $form_fields = array();
+                    }
+                    $new_headers = array();
+                    foreach ($form_fields as $field) {
+                        if (isset($field['label'])) {
+                            $new_headers[] = $field['label'];
+                        }
+                    }
+                    $append_headers_result = $google_drive->append_to_sheet($spreadsheet_id, $sheet_name, $new_headers);
+                    if (is_wp_error($append_headers_result) || ! $append_headers_result) {
+                        $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => 'Failed to create spreadsheet headers.' ) );
+                        continue;
+                    }
+                    $headers = $new_headers;
+                }
 
-                // Append data
+                $form_fields = get_post_meta($form_id, '_akashic_form_fields', true);
+                if (!is_array($form_fields)) {
+                    $form_fields = array();
+                }
+
+                $mapped_form_data = array();
+                foreach ($form_fields as $field) {
+                    $field_name = isset($field['name']) ? $field['name'] : '';
+                    $field_label = isset($field['label']) ? $field['label'] : '';
+                    if (!empty($field_name) && isset($form_data[$field_name])) {
+                        $value = is_array($form_data[$field_name]) ? implode(", ", $form_data[$field_name]) : $form_data[$field_name];
+                        $mapped_form_data[$field_label] = $value;
+                    }
+                }
+
                 $values = array();
-                foreach ( $headers as $header ) {
-                    $values[] = isset( $form_data[ $header ] ) ? $form_data[ $header ] : '';
+                foreach ($headers as $header_label) {
+                    $values[] = isset($mapped_form_data[$header_label]) ? $mapped_form_data[$header_label] : '';
                 }
 
                 $result = $google_drive->append_to_sheet( $spreadsheet_id, $sheet_name, $values );
 
                 if ( is_wp_error( $result ) ) {
                     if ( 'rate_limit_exceeded' === $result->get_error_code() ) {
-                        $db->update_submission_in_queue( $submission->id, array( 'status' => 'pending' ) ); // Revert to pending
-                        // Stop processing this batch, will retry on next cron run
+                        $db->update_submission_in_queue( $submission->id, array( 'status' => 'pending' ) );
                         break;
                     } else {
                         $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => $result->get_error_message() ) );
                     }
                 } elseif ( ! $result ) {
-                    // This case should ideally not be reached if append_to_sheet always returns WP_Error on failure
                     $db->update_submission_in_queue( $submission->id, array( 'status' => 'failed', 'failure_reason' => 'Unknown error or non-WP_Error failure from Google Drive API.' ) );
                 } else {
                     $db->update_submission_in_queue( $submission->id, array( 'status' => 'completed' ) );

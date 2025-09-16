@@ -53,6 +53,10 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                 'normal',
                 'high'
             );
+
+            // Enqueue the color picker script and style.
+            wp_enqueue_style( 'wp-color-picker' );
+            wp_enqueue_script( 'wp-color-picker' );
         }
 
         /**
@@ -167,6 +171,15 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                 jQuery(document).ready(function($) {
                     var field_key = <?php echo count( $form_fields ); ?>;
 
+                    function initialize_color_picker( $parent ) {
+                        $parent.find('.akashic-color-picker').wpColorPicker();
+                    }
+
+                    // Initialize for existing fields.
+                    $('#akashic-form-fields-wrapper .akashic-field-row').each(function(){
+                        initialize_color_picker( $(this) );
+                    });
+
                     // Function to toggle field settings visibility based on type
                     function toggleFieldSettings($fieldRow) {
                         var fieldType = $fieldRow.find('.akashic-field-type-select').val();
@@ -255,6 +268,7 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                         var $newField = $(template);
                         $('#akashic-form-fields-wrapper').append($newField);
                         toggleFieldSettings($newField); // Toggle settings for new field
+                        initialize_color_picker( $newField ); // Initialize color picker for new field
                         field_key++;
                     });
 
@@ -280,6 +294,16 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                     // Handle removing options
                     $('#akashic-form-fields-wrapper').on('click', '.akashic-remove-option', function() {
                         $(this).closest('.akashic-field-option-row').remove();
+                    });
+
+                    // Show/hide unique message field
+                    $('#akashic-form-fields-wrapper').on('change', '.akashic-field-unique-checkbox', function() {
+                        var $fieldRow = $(this).closest('.akashic-field-row');
+                        if ($(this).is(':checked')) {
+                            $fieldRow.find('.akashic-field-setting-unique-message').show();
+                        } else {
+                            $fieldRow.find('.akashic-field-setting-unique-message').hide();
+                        }
                     });
                 });
             </script>
@@ -344,8 +368,9 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
             $field_type = isset( $field['type'] ) ? $field['type'] : 'text';
             $field_label = isset( $field['label'] ) ? $field['label'] : '';
             $field_name = isset( $field['name'] ) ? $field['name'] : '';
-            $field_name = isset( $field['name'] ) ? $field['name'] : '';
             $field_required = isset( $field['required'] ) ? $field['required'] : '';
+            $field_unique = isset( $field['unique'] ) ? $field['unique'] : '';
+            $field_unique_message = isset( $field['unique_message'] ) ? $field['unique_message'] : '';
             $field_pattern = isset( $field['pattern'] ) ? $field['pattern'] : '';
             $field_validation_message = isset( $field['validation_message'] ) ? $field['validation_message'] : '';
             $field_min = isset( $field['min'] ) ? $field['min'] : '';
@@ -358,6 +383,9 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
             $field_max_size = isset( $field['max_size'] ) ? $field['max_size'] : '';
             $field_allowed_formats_message = isset( $field['allowed_formats_message'] ) ? $field['allowed_formats_message'] : '';
             $field_max_size_message = isset( $field['max_size_message'] ) ? $field['max_size_message'] : '';
+            $field_help_button_text = isset( $field['help_button_text'] ) ? $field['help_button_text'] : '?';
+            $field_help_text = isset( $field['help_text'] ) ? $field['help_text'] : '';
+            $field_help_modal_bg_color = isset( $field['help_modal_bg_color'] ) ? $field['help_modal_bg_color'] : '';
             ?>
             <div class="akashic-field-row" style="border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; cursor: move;" data-field-type="<?php echo esc_attr( $field_type ); ?>">
                 <h4 class="akashic-field-handle"><span class="dashicons dashicons-move"></span> <?php _e( 'Field', 'akashic-forms' ); ?></h4>
@@ -406,6 +434,13 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                 <p class="akashic-field-setting akashic-field-setting-required">
                     <input type="checkbox" name="akashic_form_fields[<?php echo esc_attr( $key ); ?>][required]" id="akashic_form_fields_<?php echo esc_attr( $key ); ?>_required" value="1" <?php checked( $field_required, '1' ); ?> />
                     <label for="akashic_form_fields_<?php echo esc_attr( $key ); ?>_required"><?php _e( 'Required', 'akashic-forms' ); ?></label>
+
+                    <input type="checkbox" name="akashic_form_fields[<?php echo esc_attr( $key ); ?>][unique]" id="akashic_form_fields_<?php echo esc_attr( $key ); ?>_unique" value="1" <?php checked( $field_unique, '1' ); ?> class="akashic-field-unique-checkbox" />
+                    <label for="akashic_form_fields_<?php echo esc_attr( $key ); ?>_unique"><?php _e( 'Unique', 'akashic-forms' ); ?></label>
+                </p>
+                <p class="akashic-field-setting akashic-field-setting-unique-message" style="display: <?php echo $field_unique ? 'block' : 'none'; ?>;">
+                    <label for="akashic_form_fields_<?php echo esc_attr( $key ); ?>_unique_message"><?php _e( 'Unique Validation Message:', 'akashic-forms' ); ?></label>
+                    <input type="text" name="akashic_form_fields[<?php echo esc_attr( $key ); ?>][unique_message]" id="akashic_form_fields_<?php echo esc_attr( $key ); ?>_unique_message" value="<?php echo esc_attr( $field_unique_message ); ?>" class="large-text" placeholder="<?php _e( 'This value has already been entered', 'akashic-forms' ); ?>" />
                 </p>
                 <div class="akashic-field-setting akashic-field-setting-validation">
                     <p>
@@ -458,6 +493,34 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                         <input type="text" name="akashic_form_fields[<?php echo esc_attr( $key ); ?>][max_size_message]" id="akashic_form_fields_<?php echo esc_attr( $key ); ?>_max_size_message" value="<?php echo esc_attr( $field_max_size_message ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'e.g., File size exceeds the maximum allowed limit.', 'akashic-forms' ); ?>" />
                     </p>
                 </div>
+
+                <div class="akashic-field-help-settings" style="border: 1px dashed #ccc; padding: 10px; margin-top: 10px;">
+                    <h4><?php _e( 'Help Modal Settings', 'akashic-forms' ); ?></h4>
+                    <p>
+                        <label for="akashic_form_fields_<?php echo esc_attr( $key ); ?>_help_button_text"><?php _e( 'Help Button Text:', 'akashic-forms' ); ?></label>
+                        <input type="text" name="akashic_form_fields[<?php echo esc_attr( $key ); ?>][help_button_text]" id="akashic_form_fields_<?php echo esc_attr( $key ); ?>_help_button_text" value="<?php echo esc_attr( $field_help_button_text ); ?>" class="large-text" />
+                        <p class="description"><?php _e( 'Enter the text or icon for the help button. Default is "?"', 'akashic-forms' ); ?></p>
+                    </p>
+                    <p>
+                        <label for="akashic_form_fields_<?php echo esc_attr( $key ); ?>_help_modal_bg_color"><?php _e( 'Help Modal Background Color:', 'akashic-forms' ); ?></label>
+                        <input type="text" name="akashic_form_fields[<?php echo esc_attr( $key ); ?>][help_modal_bg_color]" id="akashic_form_fields_<?php echo esc_attr( $key ); ?>_help_modal_bg_color" value="<?php echo esc_attr( $field_help_modal_bg_color ); ?>" class="akashic-color-picker" />
+                    </p>
+                    <div>
+                        <label for="akashic_form_fields_<?php echo esc_attr( $key ); ?>_help_text"><?php _e( 'Help Modal Content:', 'akashic-forms' ); ?></label>
+                        <?php
+                        wp_editor(
+                            $field_help_text,
+                            'akashic_form_fields_' . esc_attr( $key ) . '_help_text',
+                            array(
+                                'textarea_name' => 'akashic_form_fields[' . esc_attr( $key ) . '][help_text]',
+                                'media_buttons' => true,
+                                'textarea_rows' => 5,
+                            )
+                        );
+                        ?>
+                    </div>
+                </div>
+
                 <p>
                     <button type="button" class="button akashic-remove-field"><?php _e( 'Remove Field', 'akashic-forms' ); ?></button>
                 </p>
@@ -519,11 +582,13 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
             if ( isset( $_POST['akashic_form_fields'] ) ) {
                 $form_fields = array();
                 foreach ( $_POST['akashic_form_fields'] as $field_key => $field ) {
-                    $form_fields[] = array(
+                    $new_field = array(
                         'type'     => sanitize_text_field( $field['type'] ),
                         'label'    => sanitize_text_field( $field['label'] ),
                         'name'     => sanitize_key( $field['name'] ),
                         'required' => isset( $field['required'] ) ? '1' : '0',
+                        'unique' => isset( $field['unique'] ) ? '1' : '0',
+                        'unique_message' => isset( $field['unique_message'] ) ? sanitize_text_field( $field['unique_message'] ) : '',
                         'pattern'  => sanitize_text_field( $field['pattern'] ),
                         'validation_message' => sanitize_text_field( $field['validation_message'] ),
                         'min'      => sanitize_text_field( $field['min'] ),
@@ -536,6 +601,9 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                         'max_size' => sanitize_text_field( $field['max_size'] ),
                         'allowed_formats_message' => sanitize_text_field( $field['allowed_formats_message'] ),
                         'max_size_message' => sanitize_text_field( $field['max_size_message'] ),
+                        'help_button_text' => isset( $field['help_button_text'] ) ? sanitize_text_field( $field['help_button_text'] ) : '',
+                        'help_text' => isset( $field['help_text'] ) ? wp_kses_post( $field['help_text'] ) : '',
+                        'help_modal_bg_color' => isset( $field['help_modal_bg_color'] ) ? sanitize_hex_color( $field['help_modal_bg_color'] ) : '',
                     );
 
                     // Save options for select, radio, checkbox, and datalist fields.
@@ -547,8 +615,9 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                                 'label' => sanitize_text_field( $option_data['label'] ),
                             );
                         }
-                        $form_fields[ count( $form_fields ) - 1 ]['options'] = $options;
+                        $new_field['options'] = $options;
                     }
+                    $form_fields[] = $new_field;
                 }
                 update_post_meta( $post_id, '_akashic_form_fields', $form_fields );
             } else {

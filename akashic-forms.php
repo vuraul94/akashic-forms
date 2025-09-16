@@ -26,7 +26,6 @@ require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-cpt.php';
 require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-metabox.php';
 require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-shortcode.php';
 require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-db.php';
-require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-submission-handler.php';
 require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-admin.php';
 require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-google-drive.php';
 require_once AKASHIC_FORMS_PLUGIN_DIR . 'includes/class-akashic-forms-rest-api.php';
@@ -45,3 +44,11 @@ function akashic_forms_enqueue_scripts() {
     ) );
 }
 add_action( 'wp_enqueue_scripts', 'akashic_forms_enqueue_scripts' );
+
+/**
+ * Clear the cron job on deactivation.
+ */
+function akashic_forms_deactivate() {
+    wp_clear_scheduled_hook( 'akashic_forms_process_queue' );
+}
+register_deactivation_hook( __FILE__, 'akashic_forms_deactivate' );

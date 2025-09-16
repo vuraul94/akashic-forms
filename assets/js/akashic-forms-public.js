@@ -28,6 +28,10 @@ jQuery(document).ready(function($) {
                 
                 if ('message' === submissionAction) {
                     $('#akashic-form-container-' + formId + ' .akashic-form').hide();
+                    //oculto titulo y subtitulo creados en elementor si existen
+                    $('#form-title').hide();
+                    $('#form-subtitle').hide();
+                    // Muestra el mensaje de confirmación
                     $('#akashic-form-container-' + formId + ' .akashic-form-message').show();
                 } else if ('modal' === submissionAction) {
                     $('#akashic-form-modal-' + formId).show();
@@ -64,12 +68,21 @@ jQuery(document).ready(function($) {
         
     });
 
-    $('.akashic-form-modal-close').on('click', function() {
-        $(this).closest('.akashic-form-modal').hide();
+    // Handle Help Modals
+    $('.akashic-help-button').on('click', function(e) {
+        e.preventDefault();
+        var modalId = $(this).data('modal-id');
+        $('#' + modalId).show();
     });
 
+    // Combined close handler for all modals
+    $('.akashic-form-modal-close, .akashic-help-modal-close').on('click', function() {
+        $(this).closest('.akashic-form-modal, .akashic-help-modal').hide();
+    });
+
+    // Combined window click handler for all modals
     $(window).on('click', function(e) {
-        if ($(e.target).hasClass('akashic-form-modal')) {
+        if ($(e.target).hasClass('akashic-form-modal') || $(e.target).hasClass('akashic-help-modal')) {
             $(e.target).hide();
         }
     });
