@@ -371,6 +371,7 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
             $field_required = isset( $field['required'] ) ? $field['required'] : '';
             $field_unique = isset( $field['unique'] ) ? $field['unique'] : '';
             $field_unique_message = isset( $field['unique_message'] ) ? $field['unique_message'] : '';
+            $field_multiple = isset( $field['multiple'] ) ? $field['multiple'] : '';
             $field_pattern = isset( $field['pattern'] ) ? $field['pattern'] : '';
             $field_validation_message = isset( $field['validation_message'] ) ? $field['validation_message'] : '';
             $field_min = isset( $field['min'] ) ? $field['min'] : '';
@@ -475,6 +476,10 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                 </p>
 
                 <div class="akashic-field-setting akashic-field-setting-file">
+                    <p>
+                        <input type="checkbox" name="akashic_form_fields[<?php echo esc_attr( $key ); ?>][multiple]" id="akashic_form_fields_<?php echo esc_attr( $key ); ?>_multiple" value="1" <?php checked( $field_multiple, '1' ); ?> class="akashic-field-multiple-checkbox" />
+                        <label for="akashic_form_fields_<?php echo esc_attr( $key ); ?>_multiple"><?php _e( 'Multiple', 'akashic-forms' ); ?></label>
+                    </p>
                     <p>
                         <label for="akashic_form_fields[<?php echo esc_attr( $key ); ?>][allowed_formats]"><?php _e( 'Allowed Formats (comma-separated):', 'akashic-forms' ); ?></label>
                         <input type="text" name="akashic_form_fields[<?php echo esc_attr( $key ); ?>][allowed_formats]" id="akashic_form_fields_<?php echo esc_attr( $key ); ?>_allowed_formats" value="<?php echo esc_attr( $field_allowed_formats ); ?>" class="large-text" />
@@ -597,6 +602,7 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                         'parent_fieldset' => sanitize_text_field( $field['parent_fieldset'] ),
                         'show_label' => isset( $field['show_label'] ) ? '1' : '0',
                         'placeholder' => sanitize_text_field( $field['placeholder'] ),
+                        'multiple' => isset( $field['multiple'] ) ? '1' : '0',
                         'allowed_formats' => sanitize_text_field( $field['allowed_formats'] ),
                         'max_size' => sanitize_text_field( $field['max_size'] ),
                         'allowed_formats_message' => sanitize_text_field( $field['allowed_formats_message'] ),

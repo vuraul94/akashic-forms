@@ -89,16 +89,23 @@ if (! class_exists('Akashic_Forms_Shortcode')) {
                         $field_parent_fieldset = isset($field['parent_fieldset']) ? $field['parent_fieldset'] : '';
                         $field_show_label = isset($field['show_label']) && '1' === $field['show_label'];
                         $field_placeholder = isset($field['placeholder']) ? $field['placeholder'] : '';
+                        $field_multiple = isset($field['multiple']) ? $field['multiple'] : '';
+                        
+                        $field_allowed_formats = isset($field['allowed_formats']) ? $field['allowed_formats'] : '';
                         $field_help_button_text = isset($field['help_button_text']) && ! empty($field['help_button_text']) ? $field['help_button_text'] : '?';
                         $field_help_text = isset($field['help_text']) ? $field['help_text'] : '';
                         $field_help_modal_bg_color = isset($field['help_modal_bg_color']) ? $field['help_modal_bg_color'] : '';
 
                         $html_attributes = '';
+                        $html_attributes .= ' data-label="' . esc_attr($field_label) . '"';
                         if (! empty($field_required)) {
-                            $html_attributes .= ' required';
+                            $html_attributes .= ' data-required="1"';
                         }
                         if (! empty($field_pattern)) {
                             $html_attributes .= ' data-pattern="' . esc_attr($field_pattern) . '"';
+                        }
+                        if (! empty($field_validation_message)) {
+                            $html_attributes .= ' data-validation-message="' . esc_attr($field_validation_message) . '"';
                         }
                         if (! empty($field_min)) {
                             $html_attributes .= ' min="' . esc_attr($field_min) . '"';
@@ -109,11 +116,19 @@ if (! class_exists('Akashic_Forms_Shortcode')) {
                         if (! empty($field_step)) {
                             $html_attributes .= ' step="' . esc_attr($field_step) . '"';
                         }
-                        if (! empty($field_validation_message)) {
-                            $html_attributes .= ' data-validation-message="' . esc_attr($field_validation_message) . '"';
-                        }
                         if (! empty($field_placeholder)) {
                             $html_attributes .= ' placeholder="' . esc_attr($field_placeholder) . '"';
+                        }
+                        if (! empty($field_multiple)) {
+                            $html_attributes .= ' multiple="' . esc_attr($field_multiple) . '"';
+                        }
+                        if (! empty($field_allowed_formats)) {
+                            // Limpiamos espacios en blanco accidentales
+                            $limpio = str_replace(' ', '', $field_allowed_formats);
+
+                            // Agregamos el punto inicial y reemplazamos las comas por ",."
+                            $accept_format = '.' . str_replace(',', ',.', $limpio);
+                            $html_attributes .= ' accept="' . esc_attr($accept_format) . '"';
                         }
 
                         if (empty($field_name)) {
@@ -142,7 +157,69 @@ if (! class_exists('Akashic_Forms_Shortcode')) {
                                     break;
                                 case 'file':
                                 ?>
-                                    <input type="file" name="<?php echo esc_attr($field_name); ?>" id="<?php echo esc_attr($field_name); ?>" <?php echo $html_attributes; ?> />
+                                    <div class="sardimar-uploader-wrapper">
+                                        <div class="drop-zone" id="drop-zone-<?php echo esc_attr($field_name); ?>">
+                                            <div class="drop-zone-content">
+                                                <div class="upload-icon">
+                                                    <svg viewBox="0 0 24 24" width="40" height="40" stroke="#3296d4" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                                </div>
+                                                <p class="main-text">Arrastra o <span class="blue-text">Sube archivos</span></p>
+                                                <p class="sub-text" id="display-<?php echo esc_attr($field_name); ?>">Tama&ntilde;o m&aacute;ximo de 10 MB</p>
+                                            </div>
+                                            <input type="file" name="<?php echo esc_attr($field_name); ?>[]" class="real-input" id="input-<?php echo esc_attr($field_name); ?>" <?php echo $html_attributes; ?>/>
+                                        </div>
+                                        <p class="formatos-validos">Formatos v&aacute;lidos: jpg, png y pdf.</p>
+                                    </div>
+                                    <script>
+                                    (function() {
+                                        const fieldId = "<?php echo esc_js($field_name); ?>";
+                                        const input = document.getElementById('input-' + fieldId);
+                                        const display = document.getElementById('display-' + fieldId);
+                                        const zone = document.getElementById('drop-zone-' + fieldId);
+
+                                        if (input && display && zone) {
+                                            
+                                            // Funcion central para actualizar el texto
+                                            const updateDisplay = (files) => {
+                                                if (files.length === 1) {
+                                                    display.innerText = "Archivo: " + files[0].name;
+                                                } else if (files.length > 1) {
+                                                    display.innerText = files.length + " archivos seleccionados";
+                                                }
+                                                display.style.color = "#004a99";
+                                                display.style.fontWeight = "bold";
+                                            };
+
+                                            // Escuchar el cambio tradicional (clic y seleccionar)
+                                            input.addEventListener('change', function() {
+                                                if (this.files) updateDisplay(this.files);
+                                            });
+
+                                            // Manejo de Arrastrar y Soltar
+                                            ['dragover', 'dragleave', 'drop'].forEach(eventName => {
+                                                zone.addEventListener(eventName, e => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    
+                                                    if (eventName === 'dragover') {
+                                                        zone.classList.add('drag-over');
+                                                    } else {
+                                                        zone.classList.remove('drag-over');
+                                                    }
+
+                                                    if (eventName === 'drop') {
+                                                        const droppedFiles = e.dataTransfer.files;
+                                                        if (droppedFiles.length > 0) {
+                                                            input.files = droppedFiles; 
+                                                            updateDisplay(droppedFiles);
+                                                            input.dispatchEvent(new Event('change'));
+                                                        }
+                                                    }
+                                                });
+                                            });
+                                        }
+                                    })();
+                                    </script>
                                 <?php
                                     break;
                                 case 'select':

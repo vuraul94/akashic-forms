@@ -109,3 +109,42 @@
     align-items: center;
     justify-content: center;
 }
+
+/*STYLES DE INPUT FILE*/
+.sardimar-uploader-wrapper { width: 100%; }
+            
+.drop-zone {
+    position: relative;
+    background: white;
+    border-radius: 0px 20px 0px 20px;
+    padding: 40px;
+    text-align: center;
+    border: 2px dashed transparent;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+}
+
+.drop-zone.drag-over { border-color: #3296d4; background: #f0f8ff; }
+
+.upload-icon { margin-bottom: 10px; }
+
+.main-text { font-size: 18px; color: #333; margin: 0; }
+.blue-text { color: #3296d4; text-decoration: underline; cursor: pointer; }
+
+.sub-text { font-size: 14px; color: #888; margin-top: 5px; }
+
+.real-input {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.formatos-validos {
+    font-size: 12px;
+    color: #004a99;
+    font-style: italic;
+    font-weight: bold;
+    margin-top: 15px;
+}

@@ -125,59 +125,80 @@ if (! class_exists('Akashic_Forms_REST_API')) {
                 
 
                 foreach ($_FILES as $file_field_name => $file_data) {
-                    if (isset($field_types_map[$file_field_name]) && 'file' === $field_types_map[$file_field_name]) {
-                        // Get field definition for this file field
+                    // Limpiamos el nombre del campo por si viene con []
+                    $clean_field_name = str_replace('[]', '', $file_field_name);
+
+                    if (isset($field_types_map[$clean_field_name]) && 'file' === $field_types_map[$clean_field_name]) {
+                        
+                        // Buscamos la definicion del campo
                         $current_field_def = null;
                         foreach ($form_fields_definition as $def) {
-                            if (isset($def['name']) && $def['name'] === $file_field_name) {
+                            if (isset($def['name']) && $def['name'] === $clean_field_name) {
                                 $current_field_def = $def;
                                 break;
                             }
                         }
 
                         if ($current_field_def) {
-                            $allowed_formats = isset($current_field_def['allowed_formats']) ? array_map('trim', explode(',', $current_field_def['allowed_formats'])) : array();
-                            $max_size_mb = isset($current_field_def['max_size']) ? floatval($current_field_def['max_size']) : 0;
-                            $allowed_formats_message = isset($current_field_def['allowed_formats_message']) ? sanitize_text_field($current_field_def['allowed_formats_message']) : __( 'Invalid file format.', 'akashic-forms' );
-                            $max_size_message = isset($current_field_def['max_size_message']) ? sanitize_text_field($current_field_def['max_size_message']) : __( 'File size exceeds the maximum allowed limit.', 'akashic-forms' );
-                            $field_required = isset($current_field_def['required']) && '1' === $current_field_def['required'];
-
-                            // If the field is not required and no file was uploaded, skip validation
-                            if (!$field_required && $file_data['error'] === UPLOAD_ERR_NO_FILE) {
-                                continue; // Skip to next file field
-                            }
-
-                            $file_extension = pathinfo($file_data['name'], PATHINFO_EXTENSION);
-                            $file_size_mb_actual = $file_data['size'] / (1024 * 1024); // Convert bytes to MB
-
-                            // Validate file format
-                            if (!empty($allowed_formats) && !in_array(strtolower($file_extension), $allowed_formats)) {
-                                $errors[$file_field_name] = $allowed_formats_message;
-                                // Do not continue here, allow other validations to run for the same file
-                            }
-
-                            // Validate file size
-                            if ($max_size_mb > 0 && $file_size_mb_actual > $max_size_mb) {
-                                $errors[$file_field_name] = $max_size_message;
-                                // Do not continue here, allow other validations to run for the same file
-                            }
-                        }
-
-                        if ($file_data['error'] === UPLOAD_ERR_OK) {
-                            // Generate a unique filename
-                            $file_info = pathinfo($file_data['name']);
-                            $file_extension = isset($file_info['extension']) ? '.' . $file_info['extension'] : '';
-                            $new_filename = uniqid() . $file_extension;
-
-                            // Temporarily change the file name in $file_data for wp_handle_upload
-                            $file_data['name'] = $new_filename;
-
-                            $uploaded_file = wp_handle_upload($file_data, $upload_overrides);
-                            if (isset($uploaded_file['file'])) {
-                                $form_data[$file_field_name] = $uploaded_file['url'];
+                            // Preparamos los archivos para iterar (sea uno o varios)
+                            $files_to_process = [];
+                            if (is_array($file_data['name'])) {
+                                // Si es multiple, reestructuramos el array
+                                foreach ($file_data['name'] as $i => $val) {
+                                    $files_to_process[] = [
+                                        'name'     => $file_data['name'][$i],
+                                        'type'     => $file_data['type'][$i],
+                                        'tmp_name' => $file_data['tmp_name'][$i],
+                                        'error'    => $file_data['error'][$i],
+                                        'size'     => $file_data['size'][$i],
+                                    ];
+                                }
                             } else {
+                                // Si es archivo unico
+                                $files_to_process[] = $file_data;
                             }
-                        } else if ($file_data['error'] !== UPLOAD_ERR_NO_FILE) {
+
+                            $uploaded_urls = [];
+
+                            foreach ($files_to_process as $single_file) {
+                                if ($single_file['error'] === UPLOAD_ERR_NO_FILE) continue;
+
+                                // Validaciones de Formato y Tamano
+                                $file_extension = strtolower(pathinfo($single_file['name'], PATHINFO_EXTENSION));
+                                $file_size_mb_actual = $single_file['size'] / (1024 * 1024);
+                                
+                                $allowed_formats = isset($current_field_def['allowed_formats']) ? array_map('trim', explode(',', strtolower($current_field_def['allowed_formats']))) : [];
+                                $max_size_mb = isset($current_field_def['max_size']) ? floatval($current_field_def['max_size']) : 0;
+                                $allowed_formats_message = isset($current_field_def['allowed_formats_message']) ? sanitize_text_field($current_field_def['allowed_formats_message']) : __( 'Invalid file format.', 'akashic-forms' );
+                                $max_size_message = isset($current_field_def['max_size_message']) ? sanitize_text_field($current_field_def['max_size_message']) : __( 'File size exceeds the maximum allowed limit.', 'akashic-forms' );
+
+                                if (!empty($allowed_formats) && !in_array($file_extension, $allowed_formats)) {
+                                    $errors[$clean_field_name] = $allowed_formats_message;
+                                    continue;
+                                }
+
+                                if ($max_size_mb > 0 && $file_size_mb_actual > $max_size_mb) {
+                                    $errors[$clean_field_name] = $max_size_message;
+                                    continue;
+                                }
+
+                                // Proceso de subida si no hay errores previos
+                                if ($single_file['error'] === UPLOAD_ERR_OK) {
+                                    $new_filename = uniqid() . '.' . $file_extension;
+                                    $single_file['name'] = $new_filename;
+
+                                    $uploaded_file = wp_handle_upload($single_file, $upload_overrides);
+                                    
+                                    if (isset($uploaded_file['url'])) {
+                                        $uploaded_urls[] = $uploaded_file['url'];
+                                    }
+                                }
+                            }
+
+                            // Guardamos los resultados (como string separado por comas)
+                            if (!empty($uploaded_urls)) {
+                                $form_data[$clean_field_name] = implode(', ', $uploaded_urls);
+                            }
                         }
                     }
                 }
