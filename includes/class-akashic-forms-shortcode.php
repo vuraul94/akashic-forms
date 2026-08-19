@@ -71,9 +71,10 @@ if (! class_exists('Akashic_Forms_Shortcode')) {
 ?>
             <div id="akashic-form-container-<?php echo esc_attr($form_id); ?>">
                 <form action="" method="post" class="akashic-form" enctype="multipart/form-data" data-form-id="<?php echo esc_attr($form_id); ?>" data-submission-action="<?php echo esc_attr($submission_action); ?>" data-redirect-url="<?php echo esc_url($redirect_url); ?>" novalidate>
-                    <?php wp_nonce_field('akashic_submit_form', 'akashic_form_nonce'); ?>
                     <input type="hidden" name="akashic_form_id" value="<?php echo esc_attr($form_id); ?>" />
-                    <input type="hidden" name="action" value="akashic_form_submit" />
+                    <?php $akashic_ts = time(); ?>
+                    <input type="text" name="akashic_hp" value="" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute !important; left:-9999px !important; top:auto !important; width:1px !important; height:1px !important; overflow:hidden !important;" />
+                    <input type="hidden" name="akashic_ts" value="<?php echo esc_attr($akashic_ts . '.' . substr(wp_hash($akashic_ts . 'akashic_forms_ts'), 0, 12)); ?>" />
                     <?php
                     foreach ($form_fields as $field_key => $field) {
                         $field_type = isset($field['type']) ? $field['type'] : 'text';
@@ -135,14 +136,14 @@ if (! class_exists('Akashic_Forms_Shortcode')) {
                             continue;
                         }
 
-                        $modal_id = 'akashic-help-modal-' . esc_attr($form_id) . '-' . esc_attr($field_name);
+                        $modal_id = 'akashic-help-modal-' . $form_id . '-' . $field_name;
                     ?>
                         <div class="field-container field-container--<?php echo esc_attr($field_name); ?> <?php echo esc_attr($field_type); ?> <?php echo esc_attr($field_parent_fieldset); ?>">
                             <div class="label-wrapper">
                                 <?php if ($field_show_label && 'hidden' !== $field_type) : ?>
                                     <label for="<?php echo esc_attr($field_name); ?>"><?php echo esc_html($field_label); ?>
                                         <?php if (! empty($field_help_text)) : ?>
-                                            <button type="button" class="akashic-help-button" data-modal-id="<?php echo $modal_id; ?>"><?php echo esc_html($field_help_button_text); ?></button>
+                                            <button type="button" class="akashic-help-button" data-modal-id="<?php echo esc_attr($modal_id); ?>"><?php echo esc_html($field_help_button_text); ?></button>
                                         <?php endif; ?>
                                     </label>
                                 <?php endif; ?>
@@ -156,70 +157,40 @@ if (! class_exists('Akashic_Forms_Shortcode')) {
                                 <?php
                                     break;
                                 case 'file':
+                                    $field_max_size = isset($field['max_size']) && '' !== $field['max_size'] ? (float) $field['max_size'] : 0;
+                                    if ($field_max_size <= 0) {
+                                        $field_max_size = 10;
+                                    }
+                                    /* translators: %s: maximum file size, already formatted (e.g. "10 MB"). */
+                                    $max_size_text = sprintf(__('Tamaño máximo de %s', 'akashic-forms'), $field_max_size . ' MB');
+
+                                    $formats_text = '';
+                                    if (! empty($field_allowed_formats)) {
+                                        $formats_list = array_filter(array_map('trim', explode(',', $field_allowed_formats)));
+                                        if (! empty($formats_list)) {
+                                            /* translators: %s: comma-separated list of file extensions. */
+                                            $formats_text = sprintf(__('Formatos válidos: %s', 'akashic-forms'), implode(', ', $formats_list));
+                                        }
+                                    }
                                 ?>
-                                    <div class="sardimar-uploader-wrapper">
+                                    <div class="sardimar-uploader-wrapper" data-field-name="<?php echo esc_attr($field_name); ?>">
                                         <div class="drop-zone" id="drop-zone-<?php echo esc_attr($field_name); ?>">
                                             <div class="drop-zone-content">
                                                 <div class="upload-icon">
                                                     <svg viewBox="0 0 24 24" width="40" height="40" stroke="#3296d4" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                                                 </div>
-                                                <p class="main-text">Arrastra o <span class="blue-text">Sube archivos</span></p>
-                                                <p class="sub-text" id="display-<?php echo esc_attr($field_name); ?>">Tama&ntilde;o m&aacute;ximo de 10 MB</p>
+                                                <p class="main-text"><?php
+                                                                        /* translators: %s: text inviting the user to browse for files. */
+                                                                        printf(esc_html__('Arrastra o %s', 'akashic-forms'), '<span class="blue-text">' . esc_html__('Sube archivos', 'akashic-forms') . '</span>');
+                                                                        ?></p>
+                                                <p class="sub-text" id="display-<?php echo esc_attr($field_name); ?>"><?php echo esc_html($max_size_text); ?></p>
                                             </div>
                                             <input type="file" name="<?php echo esc_attr($field_name); ?>[]" class="real-input" id="input-<?php echo esc_attr($field_name); ?>" <?php echo $html_attributes; ?>/>
                                         </div>
-                                        <p class="formatos-validos">Formatos v&aacute;lidos: jpg, png y pdf.</p>
+                                        <?php if (! empty($formats_text)) : ?>
+                                            <p class="formatos-validos"><?php echo esc_html($formats_text); ?></p>
+                                        <?php endif; ?>
                                     </div>
-                                    <script>
-                                    (function() {
-                                        const fieldId = "<?php echo esc_js($field_name); ?>";
-                                        const input = document.getElementById('input-' + fieldId);
-                                        const display = document.getElementById('display-' + fieldId);
-                                        const zone = document.getElementById('drop-zone-' + fieldId);
-
-                                        if (input && display && zone) {
-                                            
-                                            // Funcion central para actualizar el texto
-                                            const updateDisplay = (files) => {
-                                                if (files.length === 1) {
-                                                    display.innerText = "Archivo: " + files[0].name;
-                                                } else if (files.length > 1) {
-                                                    display.innerText = files.length + " archivos seleccionados";
-                                                }
-                                                display.style.color = "#004a99";
-                                                display.style.fontWeight = "bold";
-                                            };
-
-                                            // Escuchar el cambio tradicional (clic y seleccionar)
-                                            input.addEventListener('change', function() {
-                                                if (this.files) updateDisplay(this.files);
-                                            });
-
-                                            // Manejo de Arrastrar y Soltar
-                                            ['dragover', 'dragleave', 'drop'].forEach(eventName => {
-                                                zone.addEventListener(eventName, e => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    
-                                                    if (eventName === 'dragover') {
-                                                        zone.classList.add('drag-over');
-                                                    } else {
-                                                        zone.classList.remove('drag-over');
-                                                    }
-
-                                                    if (eventName === 'drop') {
-                                                        const droppedFiles = e.dataTransfer.files;
-                                                        if (droppedFiles.length > 0) {
-                                                            input.files = droppedFiles; 
-                                                            updateDisplay(droppedFiles);
-                                                            input.dispatchEvent(new Event('change'));
-                                                        }
-                                                    }
-                                                });
-                                            });
-                                        }
-                                    })();
-                                    </script>
                                 <?php
                                     break;
                                 case 'select':
@@ -285,7 +256,7 @@ if (! class_exists('Akashic_Forms_Shortcode')) {
                             ?>
                         </div>
                         <?php if (! empty($field_help_text)) : ?>
-                            <div id="<?php echo $modal_id; ?>" class="akashic-help-modal" style="display: none;">
+                            <div id="<?php echo esc_attr($modal_id); ?>" class="akashic-help-modal" style="display: none;">
                                 <div class="akashic-help-modal-content" <?php echo ! empty($field_help_modal_bg_color) ? 'style="background-color:' . esc_attr($field_help_modal_bg_color) . ';"' : ''; ?>>
                                     <span class="akashic-help-modal-close">&times;</span>
                                     <div class="akashic-help-modal-body"><?php echo wp_kses_post($field_help_text); ?></div>

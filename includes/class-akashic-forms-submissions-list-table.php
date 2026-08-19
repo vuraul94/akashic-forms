@@ -24,9 +24,12 @@ if ( ! class_exists( 'Akashic_Forms_Submissions_List_Table' ) ) {
         /**
          * Constructor.
          *
-         * @param int $form_id The ID of the form.
+         * @param int    $form_id The ID of the form.
+         * @param string $status  Deprecated and ignored. The submissions table has no
+         *                        status column; the parameter is kept so older callers
+         *                        that still pass a second argument keep working.
          */
-        public function __construct( $form_id ) {
+        public function __construct( $form_id, $status = 'completed' ) {
             parent::__construct(
                 array(
                     'singular' => 'submission',
@@ -81,36 +84,23 @@ if ( ! class_exists( 'Akashic_Forms_Submissions_List_Table' ) ) {
 
             $per_page     = 20;
             $current_page = $this->get_pagenum();
-            $offset       = ( $current_page - 1 ) * $per_page;
 
-            $db              = new Akashic_Forms_DB();
-            $all_submissions = $db->get_submissions( $this->form_id );
-
-            // Sorting
+            // Sorting. Both values are whitelisted inside Akashic_Forms_DB.
             $orderby = isset( $_GET['orderby'] ) ? sanitize_key( $_GET['orderby'] ) : 'submitted_at';
             $order   = isset( $_GET['order'] ) ? strtoupper( sanitize_key( $_GET['order'] ) ) : 'DESC';
 
-            usort(
-                $all_submissions,
-                function ( $a, $b ) use ( $orderby, $order ) {
-                    $a_val = $a->$orderby;
-                    $b_val = $b->$orderby;
-                    if ( 'submitted_at' === $orderby ) {
-                        $a_val = strtotime( $a_val );
-                        $b_val = strtotime( $b_val );
-                    }
-                    if ( $a_val === $b_val ) {
-                        return 0;
-                    }
-                    if ( 'ASC' === $order ) {
-                        return $a_val < $b_val ? -1 : 1;
-                    }
-                    return $a_val > $b_val ? -1 : 1;
-                }
+            // Ordering and paging happen in SQL, so only one page is ever loaded.
+            $db          = new Akashic_Forms_DB();
+            $total_items = $db->get_submissions_count( $this->form_id );
+            $this->items = $db->get_submissions_page(
+                $this->form_id,
+                array(
+                    'per_page' => $per_page,
+                    'page'     => $current_page,
+                    'orderby'  => $orderby,
+                    'order'    => $order,
+                )
             );
-
-            $total_items = count( $all_submissions );
-            $this->items = array_slice( $all_submissions, $offset, $per_page );
 
             $this->set_pagination_args(
                 array(
@@ -133,11 +123,23 @@ if ( ! class_exists( 'Akashic_Forms_Submissions_List_Table' ) ) {
             if ( isset( $item->submission_data[ $column_name ] ) ) {
                 $value = $item->submission_data[ $column_name ];
                 if ( is_array( $value ) ) {
-                    return implode( ', ', $value );
+                    $parts = array();
+                    foreach ( $value as $part ) {
+                        if ( is_scalar( $part ) ) {
+                            $parts[] = esc_html( (string) $part );
+                        }
+                    }
+                    return implode( ', ', $parts );
+                }
+                if ( ! is_scalar( $value ) ) {
+                    return '';
                 }
                 return esc_html( $value );
             }
-            return isset( $item->$column_name ) ? $item->$column_name : '';
+            if ( isset( $item->$column_name ) && is_scalar( $item->$column_name ) ) {
+                return esc_html( (string) $item->$column_name );
+            }
+            return '';
         }
 
         /**
@@ -148,8 +150,8 @@ if ( ! class_exists( 'Akashic_Forms_Submissions_List_Table' ) ) {
          */
         protected function column_cb( $item ) {
             return sprintf(
-                '<input type="checkbox" name="submission[]" value="%s" />',
-                $item->id
+                '<input type="checkbox" name="submission[]" value="%d" />',
+                absint( $item->id )
             );
         }
 

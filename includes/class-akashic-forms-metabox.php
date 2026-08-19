@@ -21,6 +21,43 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
             add_action( 'add_meta_boxes', array( $this, 'add_form_fields_meta_box' ) );
             add_action( 'add_meta_boxes', array( $this, 'add_submission_settings_meta_box' ) );
             add_action( 'save_post', array( $this, 'save_form_meta_box_data' ) );
+            add_action( 'wp_ajax_akashic_forms_import_field_options', array( $this, 'ajax_import_field_options' ) );
+        }
+
+        /**
+         * AJAX handler: parse an uploaded CSV/XLSX file into a list of options
+         * ('value'/'label' pairs) for the field-options importer in the admin UI.
+         */
+        public function ajax_import_field_options() {
+            check_ajax_referer( 'akashic_forms_import_options', 'nonce' );
+
+            if ( ! current_user_can( 'edit_posts' ) ) {
+                wp_send_json_error( array( 'message' => __( 'You do not have permission to do this.', 'akashic-forms' ) ) );
+            }
+
+            if ( empty( $_FILES['file'] ) || UPLOAD_ERR_OK !== $_FILES['file']['error'] ) {
+                wp_send_json_error( array( 'message' => __( 'No file was uploaded, or the upload failed.', 'akashic-forms' ) ) );
+            }
+
+            $file = $_FILES['file'];
+
+            $extension = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
+            if ( ! in_array( $extension, array( 'csv', 'xlsx' ), true ) ) {
+                wp_send_json_error( array( 'message' => __( 'Please upload a .csv or .xlsx file.', 'akashic-forms' ) ) );
+            }
+
+            $max_size = 5 * 1024 * 1024;
+            if ( $file['size'] > $max_size ) {
+                wp_send_json_error( array( 'message' => __( 'The file is too large. Maximum size is 5MB.', 'akashic-forms' ) ) );
+            }
+
+            $options = Akashic_Forms_Options_Importer::parse_file( $file['tmp_name'], $file['name'] );
+
+            if ( is_wp_error( $options ) ) {
+                wp_send_json_error( array( 'message' => $options->get_error_message() ) );
+            }
+
+            wp_send_json_success( array( 'options' => $options ) );
         }
 
         /**
@@ -170,6 +207,13 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
             <script>
                 jQuery(document).ready(function($) {
                     var field_key = <?php echo count( $form_fields ); ?>;
+                    var akashicImportNonce = '<?php echo esc_js( wp_create_nonce( 'akashic_forms_import_options' ) ); ?>';
+
+                    function getFieldKeyFromRow( $fieldRow ) {
+                        var typeSelectName = $fieldRow.find('.akashic-field-type-select').attr('name');
+                        var match = typeSelectName && typeSelectName.match(/\[(\d+)\]/);
+                        return match ? match[1] : null;
+                    }
 
                     function initialize_color_picker( $parent ) {
                         $parent.find('.akashic-color-picker').wpColorPicker();
@@ -294,6 +338,102 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                     // Handle removing options
                     $('#akashic-form-fields-wrapper').on('click', '.akashic-remove-option', function() {
                         $(this).closest('.akashic-field-option-row').remove();
+                    });
+
+                    // Handle importing options from a CSV/XLSX file.
+                    $('#akashic-form-fields-wrapper').on('click', '.akashic-import-options-btn', function(e) {
+                        e.preventDefault();
+
+                        var $button = $(this);
+                        var $fieldOptions = $button.closest('.akashic-field-options');
+                        var $fieldRow = $button.closest('.akashic-field-row');
+                        var $fileInput = $fieldOptions.find('.akashic-import-options-file');
+                        var mode = $fieldOptions.find('input[name^="akashic_import_mode"]:checked').val() || 'merge';
+                        var $status = $fieldOptions.find('.akashic-import-status');
+                        var fieldKey = getFieldKeyFromRow($fieldRow);
+                        var file = $fileInput[0].files[0];
+
+                        if (!file) {
+                            $status.text('<?php echo esc_js( __( 'Selecciona un archivo primero.', 'akashic-forms' ) ); ?>').css('color', '#a00');
+                            return;
+                        }
+
+                        if (null === fieldKey) {
+                            $status.text('<?php echo esc_js( __( 'Could not determine which field to update.', 'akashic-forms' ) ); ?>').css('color', '#a00');
+                            return;
+                        }
+
+                        var formData = new FormData();
+                        formData.append('action', 'akashic_forms_import_field_options');
+                        formData.append('nonce', akashicImportNonce);
+                        formData.append('file', file);
+
+                        $button.prop('disabled', true);
+                        $status.text('<?php echo esc_js( __( 'Importando...', 'akashic-forms' ) ); ?>').css('color', '#666');
+
+                        $.ajax({
+                            url: ajaxurl,
+                            type: 'POST',
+                            data: formData,
+                            processData: false,
+                            contentType: false,
+                            success: function(response) {
+                                if (response.success && response.data && response.data.options) {
+                                    var imported = response.data.options;
+                                    var $optionsWrapper = $fieldOptions.find('.akashic-field-options-wrapper');
+
+                                    if ('replace' === mode) {
+                                        $optionsWrapper.empty();
+                                    }
+
+                                    var existingValues = {};
+                                    $optionsWrapper.find('.akashic-field-option-row').each(function() {
+                                        var v = $(this).find('input').eq(0).val();
+                                        if (v) {
+                                            existingValues[v] = true;
+                                        }
+                                    });
+
+                                    var addedCount = 0;
+                                    var skippedCount = 0;
+
+                                    imported.forEach(function(option) {
+                                        if ('merge' === mode && existingValues.hasOwnProperty(option.value)) {
+                                            skippedCount++;
+                                            return;
+                                        }
+
+                                        var optionKey = $optionsWrapper.find('.akashic-field-option-row').length;
+                                        var template = $('#akashic-field-option-template').html();
+                                        template = template.replace(/__FIELD_KEY__/g, fieldKey);
+                                        template = template.replace(/__OPTION_KEY__/g, optionKey);
+                                        var $newRow = $(template);
+                                        $newRow.find('input').eq(0).val(option.value);
+                                        $newRow.find('input').eq(1).val(option.label);
+                                        $optionsWrapper.append($newRow);
+
+                                        existingValues[option.value] = true;
+                                        addedCount++;
+                                    });
+
+                                    var message = addedCount + ' <?php echo esc_js( __( 'opciones importadas.', 'akashic-forms' ) ); ?>';
+                                    if (skippedCount > 0) {
+                                        message += ' ' + skippedCount + ' <?php echo esc_js( __( 'duplicadas omitidas.', 'akashic-forms' ) ); ?>';
+                                    }
+                                    $status.text(message).css('color', '#0a0');
+                                } else {
+                                    var errorMsg = (response.data && response.data.message) ? response.data.message : '<?php echo esc_js( __( 'Error al importar el archivo.', 'akashic-forms' ) ); ?>';
+                                    $status.text(errorMsg).css('color', '#a00');
+                                }
+                            },
+                            error: function() {
+                                $status.text('<?php echo esc_js( __( 'Error al importar el archivo.', 'akashic-forms' ) ); ?>').css('color', '#a00');
+                            },
+                            complete: function() {
+                                $button.prop('disabled', false);
+                                $fileInput.val('');
+                            }
+                        });
                     });
 
                     // Show/hide unique message field
@@ -546,6 +686,28 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                         <p>
                             <button type="button" class="button akashic-add-option" data-field-key="<?php echo esc_attr( $key ); ?>"><?php _e( 'Add Option', 'akashic-forms' ); ?></button>
                         </p>
+
+                        <div class="akashic-field-options-import" style="border-top: 1px solid #ddd; margin-top: 10px; padding-top: 10px;">
+                            <h4><?php _e( 'Import Options from File', 'akashic-forms' ); ?></h4>
+                            <p class="description"><?php _e( 'Upload a .csv or .xlsx file with "Value" and "Name" columns to populate the options above.', 'akashic-forms' ); ?></p>
+                            <p>
+                                <input type="file" class="akashic-import-options-file" accept=".csv,.xlsx" />
+                            </p>
+                            <p>
+                                <label>
+                                    <input type="radio" name="akashic_import_mode[<?php echo esc_attr( $key ); ?>]" value="merge" checked="checked" />
+                                    <?php _e( 'Merge (skip duplicate values, add the rest)', 'akashic-forms' ); ?>
+                                </label>
+                                <label style="margin-left: 15px;">
+                                    <input type="radio" name="akashic_import_mode[<?php echo esc_attr( $key ); ?>]" value="replace" />
+                                    <?php _e( 'Replace existing options', 'akashic-forms' ); ?>
+                                </label>
+                            </p>
+                            <p>
+                                <button type="button" class="button akashic-import-options-btn"><?php _e( 'Import', 'akashic-forms' ); ?></button>
+                                <span class="akashic-import-status" style="margin-left: 10px;"></span>
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -571,12 +733,11 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
          * Save the Form Fields meta box data.
          */
         public function save_form_meta_box_data( $post_id ) {
-            // Save form fields.
-            if ( ! isset( $_POST['akashic_form_fields_meta_box_nonce'] ) || ! wp_verify_nonce( $_POST['akashic_form_fields_meta_box_nonce'], 'akashic_save_form_fields_meta_box_data' ) ) {
+            if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
                 return;
             }
 
-            if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+            if ( 'akashic_forms' !== get_post_type( $post_id ) ) {
                 return;
             }
 
@@ -584,94 +745,143 @@ if ( ! class_exists( 'Akashic_Forms_Metabox' ) ) {
                 return;
             }
 
-            if ( isset( $_POST['akashic_form_fields'] ) ) {
-                $form_fields = array();
-                foreach ( $_POST['akashic_form_fields'] as $field_key => $field ) {
-                    $new_field = array(
-                        'type'     => sanitize_text_field( $field['type'] ),
-                        'label'    => sanitize_text_field( $field['label'] ),
-                        'name'     => sanitize_key( $field['name'] ),
-                        'required' => isset( $field['required'] ) ? '1' : '0',
-                        'unique' => isset( $field['unique'] ) ? '1' : '0',
-                        'unique_message' => isset( $field['unique_message'] ) ? sanitize_text_field( $field['unique_message'] ) : '',
-                        'pattern'  => sanitize_text_field( $field['pattern'] ),
-                        'validation_message' => sanitize_text_field( $field['validation_message'] ),
-                        'min'      => sanitize_text_field( $field['min'] ),
-                        'max'      => sanitize_text_field( $field['max'] ),
-                        'step'     => sanitize_text_field( $field['step'] ),
-                        'parent_fieldset' => sanitize_text_field( $field['parent_fieldset'] ),
-                        'show_label' => isset( $field['show_label'] ) ? '1' : '0',
-                        'placeholder' => sanitize_text_field( $field['placeholder'] ),
-                        'multiple' => isset( $field['multiple'] ) ? '1' : '0',
-                        'allowed_formats' => sanitize_text_field( $field['allowed_formats'] ),
-                        'max_size' => sanitize_text_field( $field['max_size'] ),
-                        'allowed_formats_message' => sanitize_text_field( $field['allowed_formats_message'] ),
-                        'max_size_message' => sanitize_text_field( $field['max_size_message'] ),
-                        'help_button_text' => isset( $field['help_button_text'] ) ? sanitize_text_field( $field['help_button_text'] ) : '',
-                        'help_text' => isset( $field['help_text'] ) ? wp_kses_post( $field['help_text'] ) : '',
-                        'help_modal_bg_color' => isset( $field['help_modal_bg_color'] ) ? sanitize_hex_color( $field['help_modal_bg_color'] ) : '',
-                    );
-
-                    // Save options for select, radio, checkbox, and datalist fields.
-                    if ( in_array( $field['type'], array( 'select', 'radio', 'checkbox', 'datalist' ) ) && isset( $_POST['akashic_form_fields'][ $field_key ]['options'] ) ) {
-                        $options = array();
-                        foreach ( $_POST['akashic_form_fields'][ $field_key ]['options'] as $option_data ) {
-                            $options[] = array(
-                                'value' => sanitize_text_field( $option_data['value'] ),
-                                'label' => sanitize_text_field( $option_data['label'] ),
-                            );
+            // Save form fields.
+            if ( isset( $_POST['akashic_form_fields_meta_box_nonce'] ) && wp_verify_nonce( $_POST['akashic_form_fields_meta_box_nonce'], 'akashic_save_form_fields_meta_box_data' ) ) {
+                if ( isset( $_POST['akashic_form_fields'] ) && is_array( $_POST['akashic_form_fields'] ) ) {
+                    $form_fields = array();
+                    foreach ( $_POST['akashic_form_fields'] as $field_key => $field ) {
+                        if ( ! is_array( $field ) ) {
+                            continue;
                         }
-                        $new_field['options'] = $options;
+
+                        $raw_type   = isset( $field['type'] ) ? sanitize_text_field( $field['type'] ) : '';
+                        $field_type = in_array( $raw_type, self::get_allowed_field_types(), true ) ? $raw_type : 'text';
+
+                        if ( $raw_type !== $field_type ) {
+                            akashic_forms_log( sprintf( 'Metabox save: unknown field type "%s" on post %d, falling back to "text".', $raw_type, $post_id ) );
+                        }
+
+                        $field_label = isset( $field['label'] ) ? sanitize_text_field( $field['label'] ) : '';
+                        $field_name  = isset( $field['name'] ) ? sanitize_key( $field['name'] ) : '';
+
+                        if ( '' === $field_name ) {
+                            akashic_forms_log( sprintf( 'Metabox save: field name is empty after sanitize_key on post %d (raw name: "%s", label: "%s", type: "%s"). The field is stored anyway but will be skipped when rendering and in the REST API.', $post_id, isset( $field['name'] ) ? (string) $field['name'] : '', $field_label, $field_type ) );
+                        }
+
+                        $new_field = array(
+                            'type'     => $field_type,
+                            'label'    => $field_label,
+                            'name'     => $field_name,
+                            'required' => isset( $field['required'] ) ? '1' : '0',
+                            'unique' => isset( $field['unique'] ) ? '1' : '0',
+                            'unique_message' => isset( $field['unique_message'] ) ? sanitize_text_field( $field['unique_message'] ) : '',
+                            'pattern'  => isset( $field['pattern'] ) ? sanitize_text_field( $field['pattern'] ) : '',
+                            'validation_message' => isset( $field['validation_message'] ) ? sanitize_text_field( $field['validation_message'] ) : '',
+                            'min'      => isset( $field['min'] ) ? sanitize_text_field( $field['min'] ) : '',
+                            'max'      => isset( $field['max'] ) ? sanitize_text_field( $field['max'] ) : '',
+                            'step'     => isset( $field['step'] ) ? sanitize_text_field( $field['step'] ) : '',
+                            'parent_fieldset' => isset( $field['parent_fieldset'] ) ? sanitize_text_field( $field['parent_fieldset'] ) : '',
+                            'show_label' => isset( $field['show_label'] ) ? '1' : '0',
+                            'placeholder' => isset( $field['placeholder'] ) ? sanitize_text_field( $field['placeholder'] ) : '',
+                            'multiple' => isset( $field['multiple'] ) ? '1' : '0',
+                            'allowed_formats' => isset( $field['allowed_formats'] ) ? sanitize_text_field( $field['allowed_formats'] ) : '',
+                            'max_size' => isset( $field['max_size'] ) ? sanitize_text_field( $field['max_size'] ) : '',
+                            'allowed_formats_message' => isset( $field['allowed_formats_message'] ) ? sanitize_text_field( $field['allowed_formats_message'] ) : '',
+                            'max_size_message' => isset( $field['max_size_message'] ) ? sanitize_text_field( $field['max_size_message'] ) : '',
+                            'help_button_text' => isset( $field['help_button_text'] ) ? sanitize_text_field( $field['help_button_text'] ) : '',
+                            'help_text' => isset( $field['help_text'] ) ? wp_kses_post( $field['help_text'] ) : '',
+                            'help_modal_bg_color' => isset( $field['help_modal_bg_color'] ) ? sanitize_hex_color( $field['help_modal_bg_color'] ) : '',
+                        );
+
+                        // Save options for select, radio, checkbox, and datalist fields.
+                        if ( in_array( $field_type, array( 'select', 'radio', 'checkbox', 'datalist' ), true ) && isset( $_POST['akashic_form_fields'][ $field_key ]['options'] ) && is_array( $_POST['akashic_form_fields'][ $field_key ]['options'] ) ) {
+                            $options = array();
+                            foreach ( $_POST['akashic_form_fields'][ $field_key ]['options'] as $option_data ) {
+                                if ( ! is_array( $option_data ) ) {
+                                    continue;
+                                }
+                                $options[] = array(
+                                    'value' => isset( $option_data['value'] ) ? sanitize_text_field( $option_data['value'] ) : '',
+                                    'label' => isset( $option_data['label'] ) ? sanitize_text_field( $option_data['label'] ) : '',
+                                );
+                            }
+                            $new_field['options'] = $options;
+                        }
+                        $form_fields[] = $new_field;
                     }
-                    $form_fields[] = $new_field;
+                    update_post_meta( $post_id, '_akashic_form_fields', $form_fields );
+                } else {
+                    delete_post_meta( $post_id, '_akashic_form_fields' );
                 }
-                update_post_meta( $post_id, '_akashic_form_fields', $form_fields );
-            } else {
-                delete_post_meta( $post_id, '_akashic_form_fields' );
             }
 
             // Save email settings.
-            if ( ! isset( $_POST['akashic_email_settings_meta_box_nonce'] ) || ! wp_verify_nonce( $_POST['akashic_email_settings_meta_box_nonce'], 'akashic_save_email_settings_meta_box_data' ) ) {
-                return;
+            if ( isset( $_POST['akashic_email_settings_meta_box_nonce'] ) && wp_verify_nonce( $_POST['akashic_email_settings_meta_box_nonce'], 'akashic_save_email_settings_meta_box_data' ) ) {
+                $recipient_email = isset( $_POST['akashic_form_email_recipient'] ) ? sanitize_email( $_POST['akashic_form_email_recipient'] ) : '';
+                $email_subject = isset( $_POST['akashic_form_email_subject'] ) ? sanitize_text_field( $_POST['akashic_form_email_subject'] ) : '';
+                $email_message = isset( $_POST['akashic_form_email_message'] ) ? sanitize_textarea_field( $_POST['akashic_form_email_message'] ) : '';
+
+                update_post_meta( $post_id, '_akashic_form_email_recipient', $recipient_email );
+                update_post_meta( $post_id, '_akashic_form_email_subject', $email_subject );
+                update_post_meta( $post_id, '_akashic_form_email_message', $email_message );
             }
-
-            $recipient_email = isset( $_POST['akashic_form_email_recipient'] ) ? sanitize_email( $_POST['akashic_form_email_recipient'] ) : '';
-            $email_subject = isset( $_POST['akashic_form_email_subject'] ) ? sanitize_text_field( $_POST['akashic_form_email_subject'] ) : '';
-            $email_message = isset( $_POST['akashic_form_email_message'] ) ? sanitize_textarea_field( $_POST['akashic_form_email_message'] ) : '';
-
-            update_post_meta( $post_id, '_akashic_form_email_recipient', $recipient_email );
-            update_post_meta( $post_id, '_akashic_form_email_subject', $email_subject );
-            update_post_meta( $post_id, '_akashic_form_email_message', $email_message );
 
             // Save Google Drive settings.
-            if ( ! isset( $_POST['akashic_google_drive_settings_meta_box_nonce'] ) || ! wp_verify_nonce( $_POST['akashic_google_drive_settings_meta_box_nonce'], 'akashic_save_google_drive_settings_meta_box_data' ) ) {
-                return;
+            if ( isset( $_POST['akashic_google_drive_settings_meta_box_nonce'] ) && wp_verify_nonce( $_POST['akashic_google_drive_settings_meta_box_nonce'], 'akashic_save_google_drive_settings_meta_box_data' ) ) {
+                $google_sheet_id = isset( $_POST['akashic_form_google_sheet_id'] ) ? sanitize_text_field( $_POST['akashic_form_google_sheet_id'] ) : '';
+                $google_sheet_name = isset( $_POST['akashic_form_google_sheet_name'] ) ? sanitize_text_field( $_POST['akashic_form_google_sheet_name'] ) : '';
+
+                update_post_meta( $post_id, '_akashic_form_google_sheet_id', $google_sheet_id );
+                update_post_meta( $post_id, '_akashic_form_google_sheet_name', $google_sheet_name );
             }
-
-            $google_sheet_id = isset( $_POST['akashic_form_google_sheet_id'] ) ? sanitize_text_field( $_POST['akashic_form_google_sheet_id'] ) : '';
-            $google_sheet_name = isset( $_POST['akashic_form_google_sheet_name'] ) ? sanitize_text_field( $_POST['akashic_form_google_sheet_name'] ) : '';
-
-            update_post_meta( $post_id, '_akashic_form_google_sheet_id', $google_sheet_id );
-            update_post_meta( $post_id, '_akashic_form_google_sheet_name', $google_sheet_name );
 
             // Save submission settings.
-            if ( ! isset( $_POST['akashic_submission_settings_meta_box_nonce'] ) || ! wp_verify_nonce( $_POST['akashic_submission_settings_meta_box_nonce'], 'akashic_save_submission_settings_meta_box_data' ) ) {
-                return;
+            if ( isset( $_POST['akashic_submission_settings_meta_box_nonce'] ) && wp_verify_nonce( $_POST['akashic_submission_settings_meta_box_nonce'], 'akashic_save_submission_settings_meta_box_data' ) ) {
+                $submission_action = isset( $_POST['akashic_form_submission_action'] ) ? sanitize_text_field( $_POST['akashic_form_submission_action'] ) : 'redirect';
+                $redirect_url = isset( $_POST['akashic_form_redirect_url'] ) ? esc_url_raw( $_POST['akashic_form_redirect_url'] ) : '';
+                $form_message = isset( $_POST['akashic_form_message'] ) ? wp_kses_post( $_POST['akashic_form_message'] ) : '';
+                $modal_message = isset( $_POST['akashic_form_modal_message'] ) ? wp_kses_post( $_POST['akashic_form_modal_message'] ) : '';
+                $submit_button_text = isset( $_POST['akashic_form_submit_button_text'] ) ? sanitize_text_field( $_POST['akashic_form_submit_button_text'] ) : '';
+                $submitting_button_text = isset( $_POST['akashic_form_submitting_button_text'] ) ? sanitize_text_field( $_POST['akashic_form_submitting_button_text'] ) : '';
+
+                update_post_meta( $post_id, '_akashic_form_submission_action', $submission_action );
+                update_post_meta( $post_id, '_akashic_form_redirect_url', $redirect_url );
+                update_post_meta( $post_id, '_akashic_form_message', $form_message );
+                update_post_meta( $post_id, '_akashic_form_modal_message', $modal_message );
+                update_post_meta( $post_id, '_akashic_form_submit_button_text', $submit_button_text );
+                update_post_meta( $post_id, '_akashic_form_submitting_button_text', $submitting_button_text );
             }
+        }
 
-            $submission_action = isset( $_POST['akashic_form_submission_action'] ) ? sanitize_text_field( $_POST['akashic_form_submission_action'] ) : 'redirect';
-            $redirect_url = isset( $_POST['akashic_form_redirect_url'] ) ? esc_url_raw( $_POST['akashic_form_redirect_url'] ) : '';
-            $form_message = isset( $_POST['akashic_form_message'] ) ? wp_kses_post( $_POST['akashic_form_message'] ) : '';
-            $modal_message = isset( $_POST['akashic_form_modal_message'] ) ? wp_kses_post( $_POST['akashic_form_modal_message'] ) : '';
-            $submit_button_text = isset( $_POST['akashic_form_submit_button_text'] ) ? sanitize_text_field( $_POST['akashic_form_submit_button_text'] ) : '';
-            $submitting_button_text = isset( $_POST['akashic_form_submitting_button_text'] ) ? sanitize_text_field( $_POST['akashic_form_submitting_button_text'] ) : '';
-
-            update_post_meta( $post_id, '_akashic_form_submission_action', $submission_action );
-            update_post_meta( $post_id, '_akashic_form_redirect_url', $redirect_url );
-            update_post_meta( $post_id, '_akashic_form_message', $form_message );
-            update_post_meta( $post_id, '_akashic_form_modal_message', $modal_message );
-            update_post_meta( $post_id, '_akashic_form_submit_button_text', $submit_button_text );
-            update_post_meta( $post_id, '_akashic_form_submitting_button_text', $submitting_button_text );
+        /**
+         * Field types offered by the field-type selector in render_field_row().
+         *
+         * @return array
+         */
+        private static function get_allowed_field_types() {
+            return array(
+                'text',
+                'email',
+                'password',
+                'textarea',
+                'file',
+                'date',
+                'checkbox',
+                'checkbox_single',
+                'select',
+                'radio',
+                'number',
+                'url',
+                'tel',
+                'search',
+                'time',
+                'hidden',
+                'color',
+                'range',
+                'datalist',
+                'output',
+                'fieldset',
+            );
         }
 
     }
