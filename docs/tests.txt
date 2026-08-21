@@ -1,0 +1,303 @@
+Lista de tests — Pre-merge a main
+
+  SEGURIDAD
+
+  S-01 — Escaping en pantalla de Cola
+  - Ir a la pantalla de Cola en el admin
+  - Buscar un envío que tenga caracteres como <script>alert(1)</script> en algún campo
+  - Verificar que se muestra el texto literal, no ejecuta el script
+
+  RESULTADO: directamente no permite agregar etiqueta script, es decir si intento mandar un script mediante el form, no queda guardado, se omite. 
+
+  S-02 — Escaping en lista de Envíos (campos de selección múltiple)
+  - Crear un formulario con un campo checkbox o multi-select
+  - Enviar con valores que contengan <b>bold</b> o "quotes"
+  - Verificar que en la pantalla de Envíos se escapa correctamente
+
+  RESULTADO: se escapa correctamente
+
+  S-03 — Saneado de inputs en el endpoint
+  - Hacer un POST al endpoint /akashic-forms/v1/sync con un campo conteniendo <script>alert(1)</script> o SQL como ';
+  DROP TABLE--
+  - Verificar que el valor guardado en BD está saneado (sin el script/SQL)
+
+  RESULTADO: correcto, se escapan las etiquetas, se guarda solo texto plano
+
+  S-04 — Solo se aceptan campos declarados
+  - Enviar al endpoint un campo extra que no existe en el formulario (ej. campo_inventado: "valor")
+  - Verificar que ese campo NO aparece en el envío guardado
+
+RESULTADO: pasado, se ignora el campo que no está declarado. 
+
+
+  S-05 — Honeypot
+  - Abrir el formulario, inspeccionar el HTML y encontrar el campo honeypot (akashic_hp) y el timestamp (akashic_ts)
+  - Enviar el formulario con el campo honeypot relleno (simulando un bot)
+  - Verificar que el envío es rechazado
+  - Enviar normalmente (honeypot vacío) y verificar que pasa
+
+  RESULTADO: PASADO
+
+  S-06 — Rate limiting (429)
+  - Enviar el mismo formulario 6 veces seguidas rápidamente desde la misma IP
+  - Verificar que la respuesta del 6to intento es HTTP 429
+
+  RESULTADO: PASADO
+
+  S-07 — Nonce
+  - Enviar una petición al endpoint con un nonce inválido (X-WP-Nonce: invalido)
+  - Verificar que devuelve 403
+  - Enviar sin nonce y verificar que pasa (usuarios anónimos)
+
+  RESULTADO: PASADO. 
+
+  S-08 — Archivos: nombre aleatorio
+  - Subir un archivo a través del formulario
+  - Ir a la carpeta de uploads y verificar que el nombre del archivo es una cadena hex de 32 caracteres (no el nombre
+  original ni un uniqid)
+
+  RESULTADO: PASADO
+
+  S-09 — Directorio de uploads protegido
+  - Navegar por el navegador a https://tudominio.com/wp-content/uploads/akashic-forms/
+  - Verificar que no muestra listado de directorios (403 o redirección)
+  - Intentar acceder directamente a un .php en ese directorio y verificar que no ejecuta
+
+  RESULTADO: PASADO
+
+  S-10 — Límite de tamaño de archivo (10 MB por defecto)
+  - En un campo de archivo sin tamaño configurado, intentar subir un archivo de más de 10 MB
+  - Verificar que es rechazado con mensaje claro de error
+
+  RESULTADO: PASA CON OBSERVACIÓN: El test en cuanto a funcionalidad pasa (rechaza el archivo grande), pero hay que revisar por qué el mensaje está vacío.
+  SE REALIZÓ LA CORRECIÓN DE ESTE PUNTO. TEST PASADO. 
+
+  S-11 — OAuth: validación de state
+  - Iniciar flujo OAuth con Google
+  - Verificar que el parámetro state está presente en la URL de redirección
+  - Si se intenta usar el callback con un state inválido o repetido, verificar que es rechazado
+
+  RESULTADO: PASADO
+
+  S-12 — OAuth: requiere admin
+  - Intentar acceder al callback OAuth como usuario sin permisos manage_options
+  - Verificar que es denegado
+
+  RESULTADO: PASADO
+
+  S-13 — ORDER BY sin inyección SQL
+  - Intentar ordenar la lista de envíos con un parámetro orderby con valor fuera de la whitelist (ej. ?orderby=SLEEP(5))
+  - Verificar que no ejecuta SQL arbitrario (idealmente retorna listado sin ordenar o error controlado)
+
+  RESULTADO: PASADO
+
+  S-14 — CSV sin fórmulas
+  - Crear un envío con un campo que contenga =SUM(1+1) o @SUM(1+1)
+  - Exportar el CSV
+  - Abrir en Excel/Google Sheets y verificar que el valor no se ejecuta como fórmula (debe aparecer con prefijo de
+  escape)
+
+  RESULTADO: PASADO
+
+  S-15 — Export CSV exige nonce
+  - Intentar acceder a la URL de export CSV sin nonce válido
+  - Verificar que es denegado
+
+  RESULTADO: PASADO
+
+  S-16 — Log no vuelca tokens
+  - Activar WP_DEBUG y WP_DEBUG_LOG
+  - Hacer una sincronización con Google Sheets
+  - Revisar wp-content/debug.log y verificar que no aparecen tokens de acceso/refresh
+
+  RESULTADO: PASADO
+
+  S-17 — Token de Google no carga en todas las páginas
+  - Con Query Monitor activo, cargar una página pública del frontend que NO sea un formulario
+  - Verificar que no se ejecuta ninguna lógica de carga de token de Google
+
+  RESULTADO: FALLO. EL SISTEMA CONECTA CON LAS CREDS DE GOOGLE OAUTH INCLUSO EN PAGINAS PUBLICAS. NO DEBERIA CORRER FUERA DEL ADMIN Y EL Crontrol
+  MODIFICACION: SE CORRIGIO EL BUG Y SE TESTEO QUE CARGUE CORRECTAMENTE ADMIN Y CRON
+
+  S-18 — Credenciales por constante en wp-config.php
+  - Definir AKASHIC_GOOGLE_CLIENT_ID y AKASHIC_GOOGLE_CLIENT_SECRET en wp-config.php
+  - Verificar que el plugin los toma correctamente y que los campos en el admin aparecen como solo lectura o no
+  sobreescriben las constantes
+
+  RESULTADO: PASADO
+
+  S-19 — XLSX: flags de libxml
+  - Importar un archivo XLSX con entidades XML maliciosas (XXE payload)
+  - Verificar que no expone archivos del servidor
+
+  OMITIDO (riesgo bajo por contexto admin-only, pendiente revisión futura).
+
+  S-20 — Regex de validación
+  - Configurar un campo con una regex de validación (ej. ^\d{8}$)
+  - Enviar un valor que no cumpla la regex
+  - Verificar que el envío es rechazado con mensaje de error correcto (sin warning de PHP por delimitador mal formado)
+
+  RESULTADO: PASADO
+
+  ---
+  DEFECTOS
+
+  D-01 — Intervalo de cron surte efecto al guardar
+  - Cambiar el intervalo de cron (ej. de 15 min a 5 min) y guardar
+  - Verificar con WP Crontrol que el cron siguiente se reprogramó al nuevo intervalo
+
+  RESULTADO: PASADO
+
+  D-02 — Casilla de activar surte efecto
+  - Desactivar el cron desde la UI y guardar
+  - Verificar con WP Crontrol que el evento se eliminó
+  - Activar de nuevo y verificar que reaparece
+
+  RESULTADO: PASADO
+
+  D-03 — Clear Queue pide confirmación
+  - Ir a la pantalla de Cola
+  - Hacer clic en "Vaciar cola" (o equivalente)
+  - Verificar que aparece un diálogo de confirmación antes de proceder
+
+  RESULTADO: PASADO
+
+  D-04 — Fecha de envío del cliente
+  - Hacer un POST al endpoint incluyendo submitted_at con una fecha específica
+  - Verificar que el envío guardado en BD tiene esa fecha, no la fecha del servidor
+
+  RESULTADO: PASADO
+
+  D-05 — Uploader muestra tamaño máximo y formatos
+  - Crear un campo de archivo con tamaño máximo 2 MB y formatos pdf,jpg
+  - Ver el formulario en el frontend
+  - Verificar que debajo del campo aparece "Máximo: 2 MB | Formatos: pdf, jpg" (o similar)
+
+  RESULTADO: PASADO
+
+  D-06 — Reintentos con espera creciente
+  - Provocar un fallo en la sincronización con Google Sheets (ej. desconectando OAuth temporalmente)
+  - Verificar que el elemento en cola incrementa su contador de intentos
+  - Verificar que el tiempo hasta el siguiente intento crece exponencialmente (60s, 120s, 240s...)
+
+  RESULTADO: PASADO
+
+  D-07 — Columnas mapeadas por nombre de campo
+  - Configurar un formulario con columnas en Google Sheets
+  - Cambiar la etiqueta (label) de un campo sin cambiar su name
+  - Verificar que los datos siguen llegando a la columna correcta en la hoja
+
+  RESULTADO: PASADO
+
+  D-08 — Cajas de ajustes se guardan por separado
+  - Modificar configuraciones en dos meta boxes distintos
+  - Guardar una sola de ellas
+  - Verificar que la otra no cambió ni perdió sus valores
+
+  RESULTADO: PASADO
+
+  D-09 — Validación de tipo de campo
+  - Configurar un campo de tipo email y enviar un valor que no sea email válido
+  - Verificar que es rechazado
+  - Verificar que no genera warnings de PHP en el log
+
+  RESULTADO: PASADO
+
+  D-10 — Traducciones cargadas
+  - Cambiar el idioma de WordPress a Español (Settings → General)
+  - Ver el formulario en frontend y el admin del plugin
+  - Verificar que las cadenas aparecen en español (no en inglés hardcodeado)
+
+  OMITIDO (el plugin no tiene archivos de traducción aún, es una feature pendiente).
+
+  D-11 — uninstall.php
+  - Desactivar y luego desinstalar el plugin desde el admin de WordPress
+  - Verificar que las tablas wp_akashic_form_submissions, wp_akashic_form_queue, wp_akashic_form_field_values ya no
+  existen en la BD
+  - Verificar que las opciones del plugin se eliminaron de wp_options
+
+  RESULTADO: PASADO
+
+  D-12 — Migración de esquema en actualización
+  - Simular una actualización (cambiar la versión en el plugin artificialmente a una anterior, luego recargar)
+  - Verificar que maybe_upgrade() corre y actualiza el esquema sin perder datos
+
+  RESULTADO: PASADO
+
+  ---
+  RENDIMIENTO
+
+  R-01 — Índices en tablas
+  - Conectarse a la BD (phpMyAdmin o CLI)
+  - Ejecutar SHOW INDEX FROM wp_akashic_form_queue y verificar que existen índices en status, form_id, created_at,
+  claim_token
+  - Idem para wp_akashic_form_submissions (form_id, submitted_at)
+  - Idem para wp_akashic_form_field_values (índice compuesto form_id + field_name + value_hash)
+
+  RESULTADO: PASADO
+
+  R-02 — Validación de valor único indexada
+  - Crear un campo con validación "valor único"
+  - Enviar 100 registros distintos al formulario
+  - Enviar uno repetido y verificar que es rechazado
+  - Verificar en el log de queries (con Query Monitor) que usa el índice, no un full table scan
+
+  RESULTADO: PASADO
+
+  R-03 — Paginación SQL
+  - Con más de 50 envíos en la BD, abrir la pantalla de Envíos
+  - Verificar con Query Monitor que la query usa LIMIT/OFFSET
+  - Verificar que navegar a la página 2 carga solo los siguientes N registros
+
+  RESULTADO: PASADO
+
+  R-04 — Cola atómica (sin duplicados)
+  - Con varios workers o corriendo el cron dos veces simultáneamente
+  - Verificar que cada fila de la cola es procesada solo una vez (sin duplicados en Google Sheets)
+
+  RESULTADO: PASADO (por revisión de código + índice confirmado).
+
+  R-05 — Tamaño de lote configurable
+  - Cambiar el batch size a 2 en los ajustes
+  - Agregar 5 envíos a la cola
+  - Correr el cron manualmente y verificar que procesa solo 2 por vez
+
+  RESULTADO: PASADO
+
+  R-06 — Reintentos configurables
+  - Cambiar el máximo de reintentos a 2
+  - Verificar que un envío fallido no se reintenta más de 2 veces
+
+  RESULTADO: PASADO
+
+  R-07 — Sin script de uploader duplicado
+  - Crear un formulario con 3 campos de archivo
+  - Ver el formulario en frontend, inspeccionar el código fuente
+  - Verificar que el script del uploader aparece UNA sola vez, no 3
+
+  RESULTADO: PASADO
+
+  ---
+  FLUJO GENERAL (smoke test)
+
+  G-01 — Envío básico end-to-end
+  - Crear un formulario con texto, email, select y archivo
+  - Enviar desde el frontend
+  - Verificar que aparece en la pantalla de Envíos
+  - Verificar que llega a Google Sheets
+
+  RESULTADO: PASADO
+
+  G-02 — Formulario con todos los tipos de campo
+  - Crear un formulario con todos los tipos disponibles (text, textarea, email, phone, select, checkbox, radio, file,
+  date, etc.)
+  - Enviar con valores válidos
+  - Verificar que todo se guarda correctamente
+
+  RESULTADO: PASADO
+
+  G-03 — Error de validación en frontend
+  - Enviar un campo requerido vacío
+  - Verificar que el formulario muestra error sin enviar la petición al servidor
+
+  RESULTADO: PASADO

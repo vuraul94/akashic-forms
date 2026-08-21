@@ -247,8 +247,15 @@ if (! class_exists('Akashic_Forms_REST_API')) {
                                     // No per-field limit configured: fall back to the default cap.
                                     $max_size_mb = $default_max_size_mb;
                                 }
-                                $allowed_formats_message = isset($current_field_def['allowed_formats_message']) ? sanitize_text_field($current_field_def['allowed_formats_message']) : __( 'Invalid file format.', 'akashic-forms' );
-                                $max_size_message = isset($current_field_def['max_size_message']) ? sanitize_text_field($current_field_def['max_size_message']) : __( 'File size exceeds the maximum allowed limit.', 'akashic-forms' );
+                                $allowed_formats_message = !empty($current_field_def['allowed_formats_message']) ? sanitize_text_field($current_field_def['allowed_formats_message']) : __( 'Invalid file format.', 'akashic-forms' );
+                                $max_size_message = !empty($current_field_def['max_size_message']) ? sanitize_text_field($current_field_def['max_size_message']) : sprintf( __( 'File size exceeds the maximum allowed limit of %s MB.', 'akashic-forms' ), $max_size_mb );
+
+                                // PHP itself rejected the file because it exceeded upload_max_filesize or
+                                // the MAX_FILE_SIZE hidden field. Treat it the same as our own size check.
+                                if ( $single_file['error'] === UPLOAD_ERR_INI_SIZE || $single_file['error'] === UPLOAD_ERR_FORM_SIZE ) {
+                                    $errors[$clean_field_name] = $max_size_message;
+                                    continue;
+                                }
 
                                 if (!empty($allowed_formats) && !in_array($file_extension, $allowed_formats)) {
                                     $errors[$clean_field_name] = $allowed_formats_message;

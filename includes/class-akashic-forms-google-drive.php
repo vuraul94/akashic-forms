@@ -438,4 +438,9 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
 
 }
 
-new Akashic_Forms_Google_Drive();
+// Only register admin hooks on admin requests and during cron runs.
+// The class definition stays available everywhere so the queue processor
+// and other callers can instantiate it on demand.
+if ( is_admin() || ( defined( 'DOING_CRON' ) && DOING_CRON ) ) {
+    new Akashic_Forms_Google_Drive();
+}
