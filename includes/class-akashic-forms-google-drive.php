@@ -23,11 +23,24 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
          * Constructor.
          */
         public function __construct() {
-            $this->client_id = get_option( 'akashic_forms_google_client_id' );
-            $this->client_secret = get_option( 'akashic_forms_google_client_secret' );
+            $this->client_id = defined( 'AKASHIC_FORMS_GOOGLE_CLIENT_ID' ) && AKASHIC_FORMS_GOOGLE_CLIENT_ID
+                ? AKASHIC_FORMS_GOOGLE_CLIENT_ID
+                : get_option( 'akashic_forms_google_client_id' );
+            $this->client_secret = defined( 'AKASHIC_FORMS_GOOGLE_CLIENT_SECRET' ) && AKASHIC_FORMS_GOOGLE_CLIENT_SECRET
+                ? AKASHIC_FORMS_GOOGLE_CLIENT_SECRET
+                : get_option( 'akashic_forms_google_client_secret' );
             $this->redirect_uri = admin_url( 'admin.php?page=akashic-forms-google-drive-settings' );
 
             add_action( 'admin_init', array( $this, 'handle_oauth_redirect' ) );
+        }
+
+        /**
+         * Whether the Google credentials are (at least partially) defined via constants.
+         *
+         * @return bool
+         */
+        public function has_credentials_constants() {
+            return defined( 'AKASHIC_FORMS_GOOGLE_CLIENT_ID' ) || defined( 'AKASHIC_FORMS_GOOGLE_CLIENT_SECRET' );
         }
 
         /**
@@ -38,7 +51,7 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
         public function get_google_client() {
 
             if ( empty( $this->client_id ) || empty( $this->client_secret ) ) {
-                error_log( 'Akashic Forms Google Drive: get_google_client - Client ID or Client Secret is empty.' );
+                akashic_forms_log( 'Google Drive: get_google_client - Client ID or Client Secret is empty.' );
                 return false;
             }
 
@@ -72,7 +85,7 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
 
                         // Check if the refresh itself returned an error (e.g. revoked token).
                         if ( isset( $new_token['error'] ) ) {
-                            error_log( 'Akashic Forms Google Drive: Token refresh returned error: ' . $new_token['error'] . ' - ' . ( isset( $new_token['error_description'] ) ? $new_token['error_description'] : '' ) );
+                            akashic_forms_log( 'Google Drive: Token refresh returned an error from Google. Stored token cleared.' );
                             delete_option( 'akashic_forms_google_access_token' );
                             return $client;
                         }
@@ -84,15 +97,15 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
                             $client->setAccessToken( $updated_token );
                         }
 
-                        update_option( 'akashic_forms_google_access_token', $updated_token );
-                        error_log( 'Akashic Forms Google Drive: Token refreshed successfully.' );
+                        update_option( 'akashic_forms_google_access_token', $updated_token, false );
+                        akashic_forms_log( 'Google Drive: Token refreshed successfully.' );
                     } catch (Exception $e) {
-                        error_log( 'Akashic Forms Google Drive: Error refreshing token: ' . $e->getMessage() );
+                        akashic_forms_log( 'Google Drive: Error refreshing token: ' . $e->getMessage() );
                         // If refresh fails, clear the token so re-authentication is forced.
                         delete_option( 'akashic_forms_google_access_token' );
                     }
                 } else {
-                    error_log( 'Akashic Forms Google Drive: Access token expired and no refresh token available. Clearing stored token to force re-authentication.' );
+                    akashic_forms_log( 'Google Drive: Access token expired and no refresh token available. Clearing stored token to force re-authentication.' );
                     delete_option( 'akashic_forms_google_access_token' );
                 }
             }
@@ -101,22 +114,67 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
         }
 
         /**
+         * Build the Google authorization URL, storing a one-time CSRF state.
+         *
+         * @return string The authorization URL, or an empty string if the client is not configured.
+         */
+        public function get_auth_url() {
+            $client = $this->get_google_client();
+            if ( ! $client ) {
+                return '';
+            }
+
+            $state = wp_generate_password( 32, false, false );
+
+            update_option(
+                'akashic_forms_google_oauth_state',
+                array(
+                    'state'   => $state,
+                    'created' => time(),
+                    'user_id' => get_current_user_id(),
+                ),
+                false
+            );
+
+            $client->setState( $state );
+
+            return $client->createAuthUrl();
+        }
+
+        /**
          * Handle OAuth 2.0 redirect.
          */
         public function handle_oauth_redirect() {
             if ( isset( $_GET['page'] ) && 'akashic-forms-google-drive-settings' === $_GET['page'] && isset( $_GET['code'] ) ) {
+                // Only administrators may complete the OAuth handshake.
+                if ( ! current_user_can( 'manage_options' ) ) {
+                    return;
+                }
+
+                $clean_url = remove_query_arg( array( 'code', 'state' ), $this->redirect_uri );
+
+                if ( ! $this->validate_oauth_state() ) {
+                    delete_option( 'akashic_forms_google_oauth_state' );
+                    akashic_forms_log( 'Google Drive: OAuth callback rejected due to an invalid or expired state parameter.' );
+                    wp_redirect( add_query_arg( 'auth_error', 'invalid_state', $clean_url ) );
+                    exit;
+                }
+
+                // The state is single-use: discard it as soon as it has been validated.
+                delete_option( 'akashic_forms_google_oauth_state' );
+
                 $client = $this->get_google_client();
                 if ( ! $client ) {
                     return; // Client not configured.
                 }
 
-                $auth_code = sanitize_text_field( $_GET['code'] );
+                $auth_code = sanitize_text_field( wp_unslash( $_GET['code'] ) );
                 $token_response = $client->fetchAccessTokenWithAuthCode( $auth_code );
 
                 // Check if the token response contains an error.
                 if ( isset( $token_response['error'] ) ) {
-                    error_log( 'Akashic Forms Google Drive: OAuth token exchange failed: ' . $token_response['error'] . ' - ' . ( isset( $token_response['error_description'] ) ? $token_response['error_description'] : '' ) );
-                    wp_redirect( add_query_arg( 'auth_error', 'token_exchange_failed', remove_query_arg( 'code', $this->redirect_uri ) ) );
+                    akashic_forms_log( 'Google Drive: OAuth token exchange failed.' );
+                    wp_redirect( add_query_arg( 'auth_error', 'token_exchange_failed', $clean_url ) );
                     exit;
                 }
 
@@ -128,14 +186,45 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
                     $token_response['refresh_token'] = $existing_token['refresh_token'];
                 }
 
-                update_option( 'akashic_forms_google_access_token', $token_response );
+                update_option( 'akashic_forms_google_access_token', $token_response, false );
 
-                error_log( 'Akashic Forms Google Drive: OAuth token saved successfully. Refresh token present: ' . ( ! empty( $token_response['refresh_token'] ) ? 'yes' : 'NO - may cause issues' ) );
+                akashic_forms_log( 'Google Drive: OAuth token saved successfully. Refresh token present: ' . ( ! empty( $token_response['refresh_token'] ) ? 'yes' : 'NO - may cause issues' ) );
 
                 // Redirect to clean URL.
-                wp_redirect( remove_query_arg( 'code', $this->redirect_uri ) );
+                wp_redirect( $clean_url );
                 exit;
             }
+        }
+
+        /**
+         * Validate the OAuth state parameter returned by Google.
+         *
+         * @return bool True if the state is valid for the current user, false otherwise.
+         */
+        private function validate_oauth_state() {
+            if ( empty( $_GET['state'] ) ) {
+                return false;
+            }
+
+            $stored = get_option( 'akashic_forms_google_oauth_state' );
+            if ( ! is_array( $stored ) || empty( $stored['state'] ) ) {
+                return false;
+            }
+
+            $received = sanitize_text_field( wp_unslash( $_GET['state'] ) );
+            if ( ! hash_equals( (string) $stored['state'], $received ) ) {
+                return false;
+            }
+
+            if ( ! isset( $stored['user_id'] ) || (int) $stored['user_id'] !== get_current_user_id() ) {
+                return false;
+            }
+
+            if ( ! isset( $stored['created'] ) || ( time() - (int) $stored['created'] ) > ( 15 * MINUTE_IN_SECONDS ) ) {
+                return false;
+            }
+
+            return true;
         }
 
         /**
@@ -155,7 +244,7 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
 
             // Check if the token is still expired after get_google_client attempted refresh.
             if ( $client->isAccessTokenExpired() ) {
-                error_log( 'Akashic Forms Google Drive: append_to_sheet - Token is expired and could not be refreshed.' );
+                akashic_forms_log( 'Google Drive: append_to_sheet - Token is expired and could not be refreshed.' );
                 return new WP_Error( 'token_expired', 'Google Drive API: Access token is expired and could not be refreshed. Please re-authorize in Google Drive settings.' );
             }
 
@@ -178,17 +267,17 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
                 }
                 // On 401 Unauthorized, attempt a single retry after forcing a token refresh.
                 if ( 401 == $e->getCode() && ! $is_retry ) {
-                    error_log( 'Akashic Forms Google Drive: append_to_sheet - 401 error, attempting token refresh and retry.' );
+                    akashic_forms_log( 'Google Drive: append_to_sheet - 401 error, attempting token refresh and retry.' );
                     $refreshed = $this->force_token_refresh();
                     if ( $refreshed ) {
                         return $this->append_to_sheet( $spreadsheet_id, $range, $values, true );
                     }
                     return new WP_Error( 'token_refresh_failed', 'Google Drive API: Token refresh failed after 401 error. Please re-authorize.' );
                 }
-                error_log( 'Akashic Forms Google Drive: append_to_sheet error (' . $e->getCode() . '): ' . $e->getMessage() );
+                akashic_forms_log( 'Google Drive: append_to_sheet error (' . $e->getCode() . '): ' . $e->getMessage() );
                 return new WP_Error( 'google_api_error', 'Google Drive API Error: ' . $e->getMessage() );
             } catch ( Exception $e ) {
-                error_log( 'Akashic Forms Google Drive: append_to_sheet unexpected error: ' . $e->getMessage() );
+                akashic_forms_log( 'Google Drive: append_to_sheet unexpected error: ' . $e->getMessage() );
                 return new WP_Error( 'generic_error', 'An unexpected error occurred: ' . $e->getMessage() );
             }
         }
@@ -209,7 +298,7 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
 
             // Check if the token is still expired after get_google_client attempted refresh.
             if ( $client->isAccessTokenExpired() ) {
-                error_log( 'Akashic Forms Google Drive: get_spreadsheet_headers - Token is expired and could not be refreshed.' );
+                akashic_forms_log( 'Google Drive: get_spreadsheet_headers - Token is expired and could not be refreshed.' );
                 return new WP_Error( 'token_expired', 'Google Drive API: Access token is expired and could not be refreshed. Please re-authorize in Google Drive settings.' );
             }
 
@@ -228,17 +317,17 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
                 }
                 // On 401 Unauthorized, attempt a single retry after forcing a token refresh.
                 if ( 401 == $e->getCode() && ! $is_retry ) {
-                    error_log( 'Akashic Forms Google Drive: get_spreadsheet_headers - 401 error, attempting token refresh and retry.' );
+                    akashic_forms_log( 'Google Drive: get_spreadsheet_headers - 401 error, attempting token refresh and retry.' );
                     $refreshed = $this->force_token_refresh();
                     if ( $refreshed ) {
                         return $this->get_spreadsheet_headers( $spreadsheet_id, $sheet_name, true );
                     }
                     return new WP_Error( 'token_refresh_failed', 'Google Drive API: Token refresh failed after 401 error. Please re-authorize.' );
                 }
-                error_log( 'Akashic Forms Google Drive: get_spreadsheet_headers error (' . $e->getCode() . '): ' . $e->getMessage() );
+                akashic_forms_log( 'Google Drive: get_spreadsheet_headers error (' . $e->getCode() . '): ' . $e->getMessage() );
                 return new WP_Error( 'google_api_error', 'Google Drive API Error: ' . $e->getMessage() );
             } catch ( Exception $e ) {
-                error_log( 'Akashic Forms Google Drive: get_spreadsheet_headers unexpected error: ' . $e->getMessage() );
+                akashic_forms_log( 'Google Drive: get_spreadsheet_headers unexpected error: ' . $e->getMessage() );
                 return new WP_Error( 'generic_error', 'An unexpected error occurred: ' . $e->getMessage() );
             }
         }
@@ -251,7 +340,7 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
         public function force_token_refresh() {
             $stored_token = get_option( 'akashic_forms_google_access_token' );
             if ( ! is_array( $stored_token ) || empty( $stored_token['refresh_token'] ) ) {
-                error_log( 'Akashic Forms Google Drive: force_token_refresh - No refresh token available.' );
+                akashic_forms_log( 'Google Drive: force_token_refresh - No refresh token available.' );
                 return false;
             }
 
@@ -265,7 +354,7 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
                 $new_token = $client->fetchAccessTokenWithRefreshToken( $stored_token['refresh_token'] );
 
                 if ( isset( $new_token['error'] ) ) {
-                    error_log( 'Akashic Forms Google Drive: force_token_refresh failed: ' . $new_token['error'] );
+                    akashic_forms_log( 'Google Drive: force_token_refresh failed. Stored token cleared.' );
                     delete_option( 'akashic_forms_google_access_token' );
                     return false;
                 }
@@ -275,11 +364,11 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
                     $new_token['refresh_token'] = $stored_token['refresh_token'];
                 }
 
-                update_option( 'akashic_forms_google_access_token', $new_token );
-                error_log( 'Akashic Forms Google Drive: force_token_refresh succeeded.' );
+                update_option( 'akashic_forms_google_access_token', $new_token, false );
+                akashic_forms_log( 'Google Drive: force_token_refresh succeeded.' );
                 return true;
             } catch ( Exception $e ) {
-                error_log( 'Akashic Forms Google Drive: force_token_refresh exception: ' . $e->getMessage() );
+                akashic_forms_log( 'Google Drive: force_token_refresh exception: ' . $e->getMessage() );
                 delete_option( 'akashic_forms_google_access_token' );
                 return false;
             }
@@ -319,7 +408,7 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
                 : 0;
             $is_expired = $expires_at > 0 && $expires_at < time();
             $expires_formatted = $expires_at > 0
-                ? get_date_from_gmt( date( 'Y-m-d H:i:s', $expires_at ), 'Y-m-d H:i:s' )
+                ? get_date_from_gmt( gmdate( 'Y-m-d H:i:s', $expires_at ), 'Y-m-d H:i:s' )
                 : __( 'Unknown', 'akashic-forms' );
 
             if ( ! $has_refresh_token ) {
@@ -349,4 +438,9 @@ if ( ! class_exists( 'Akashic_Forms_Google_Drive' ) ) {
 
 }
 
-new Akashic_Forms_Google_Drive();
+// Only register admin hooks on admin requests and during cron runs.
+// The class definition stays available everywhere so the queue processor
+// and other callers can instantiate it on demand.
+if ( is_admin() || ( defined( 'DOING_CRON' ) && DOING_CRON ) ) {
+    new Akashic_Forms_Google_Drive();
+}

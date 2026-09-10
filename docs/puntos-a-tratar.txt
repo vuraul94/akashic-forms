@@ -1,0 +1,50 @@
+Seguridad
+
+- Escapada toda la salida de la pantalla de Cola, que imprimía los datos enviados sin filtrar.
+- Escapada la salida de la lista de Envíos en los campos de selección múltiple.
+- Saneados los valores que llegan al endpoint antes de guardarlos.
+- El endpoint ahora solo acepta campos declarados en el formulario.
+- Añadido honeypot con marca de tiempo firmada al formulario público.
+- Añadido límite de envíos por IP, con respuesta 429.
+- El nonce se verifica cuando la petición lo incluye.
+- Los archivos subidos usan nombres aleatorios de 32 caracteres en vez de uniqid().
+- Los archivos nuevos van a un directorio propio con .htaccess que bloquea listado y PHP.
+- Los campos de archivo sin tamaño configurado tienen ahora un tope de 10 MB.
+- El callback de OAuth valida un parámetro state de un solo uso.
+- El callback de OAuth exige permisos de administrador.
+- Lista blanca de columnas en ORDER BY, cerrando la inyección SQL.
+- Neutralizadas las fórmulas en el CSV exportado.
+- El export CSV ahora exige nonce.
+- El log solo escribe si WP_DEBUG está activo, y ya no vuelca tokens.
+- El token de Google dejó de cargarse en todas las peticiones del sitio.
+- Las credenciales de Google se pueden definir por constante en wp-config.php.
+- El parser de XLSX usa banderas de libxml explícitas y limita el tamaño descomprimido.
+- Corregido el delimitador de las expresiones regulares de validación.
+
+Defectos
+
+- El intervalo de cron y la casilla de activar ya surten efecto al guardarlos.
+- Clear Queue vuelve a pedir confirmación antes de vaciar la cola.
+- Se respeta la fecha de envío que manda el cliente.
+- El uploader muestra el tamaño máximo y los formatos reales de cada campo.
+- Los envíos fallidos se reintentan con contador y espera creciente.
+- Las columnas de la hoja se mapean por nombre de campo, no por etiqueta.
+- Cada caja de ajustes se guarda por separado, sin que una bloquee a las demás.
+- Validado el tipo de campo y protegidos los accesos que emitían avisos de PHP.
+- Se cargan las traducciones y el español dejó de estar incrustado en el código.
+- Añadido uninstall.php y migración de esquema en las actualizaciones.
+
+Rendimiento
+
+- Añadidos índices a las tablas, que solo tenían clave primaria.
+- La validación de valores únicos usa una tabla indexada en vez de recorrerlo todo.
+- La lista de envíos pagina en SQL en vez de cargarlo todo en memoria.
+- Los datos se guardan en JSON, leyendo lo antiguo sin migración manual.
+- La cola reclama filas de forma atómica, evitando duplicados en la hoja.
+- El tamaño del lote y los reintentos son configurables.
+- El script del uploader dejó de duplicarse por cada campo de archivo.
+
+Pendiente
+
+- El envío de notificaciones por correo sigue sin conectarse.
+- Falta el campo de captcha.

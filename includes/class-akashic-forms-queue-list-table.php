@@ -113,11 +113,12 @@ if ( ! class_exists( 'Akashic_Forms_Queue_List_Table' ) ) {
                 case 'response':
                 case 'created_at':
                 case 'updated_at':
-                    return $item->$column_name;
+                    $value = isset( $item->$column_name ) ? $item->$column_name : '';
+                    return is_scalar( $value ) ? esc_html( (string) $value ) : '';
                 case 'submission_data':
-                    return '<pre>' . print_r( $item->submission_data, true ) . '</pre>';
+                    return '<pre>' . esc_html( print_r( $item->submission_data, true ) ) . '</pre>';
                 default:
-                    return print_r( $item, true );
+                    return esc_html( print_r( $item, true ) );
             }
         }
 
@@ -134,11 +135,18 @@ if ( ! class_exists( 'Akashic_Forms_Queue_List_Table' ) ) {
                 $time_left  = $timeout - ( time() - $started_at );
 
                 if ( $time_left > 0 ) {
-                    return sprintf( '%d minutes and %d seconds', floor( $time_left / 60 ), $time_left % 60 );
+                    return sprintf(
+                        /* translators: 1: number of minutes left, 2: number of seconds left. */
+                        __( '%1$d minutes and %2$d seconds', 'akashic-forms' ),
+                        floor( $time_left / 60 ),
+                        $time_left % 60
+                    );
                 } else {
                     return __( 'Timed out', 'akashic-forms' );
                 }
             }
+
+            return '';
         }
 
         /**
@@ -171,10 +179,15 @@ if ( ! class_exists( 'Akashic_Forms_Queue_List_Table' ) ) {
          */
         public function column_actions( $item ) {
             if ( 'failed' === $item->status && isset( $item->failure_reason ) ) {
-                $modal_id = 'failure-reason-modal-' . $item->id;
-                echo '<a href="#TB_inline?width=600&height=550&inlineId=' . $modal_id . '" class="thickbox button">View Reason</a>';
-                $this->modals[$modal_id] = '<div id="' . $modal_id . '" style="display:none;"><h2>' . __( 'Failure Reason', 'akashic-forms' ) . '</h2><p>' . esc_html( $item->failure_reason ) . '</p></div>';
+                $modal_id = 'failure-reason-modal-' . absint( $item->id );
+
+                // The modal markup is printed later, in display().
+                $this->modals[$modal_id] = '<div id="' . esc_attr( $modal_id ) . '" style="display:none;"><h2>' . esc_html__( 'Failure Reason', 'akashic-forms' ) . '</h2><p>' . esc_html( $item->failure_reason ) . '</p></div>';
+
+                return '<a href="' . esc_attr( '#TB_inline?width=600&height=550&inlineId=' . $modal_id ) . '" class="thickbox button">' . esc_html__( 'View Reason', 'akashic-forms' ) . '</a>';
             }
+
+            return '';
         }
 
         /**
@@ -185,10 +198,11 @@ if ( ! class_exists( 'Akashic_Forms_Queue_List_Table' ) ) {
         protected function extra_tablenav( $which ) {
             if ( 'top' === $which ) {
                 $current_status = isset( $_GET['status'] ) ? sanitize_text_field( $_GET['status'] ) : 'all';
+                $page_slug      = ( isset( $_REQUEST['page'] ) && is_string( $_REQUEST['page'] ) ) ? sanitize_key( $_REQUEST['page'] ) : '';
                 ?>
                 <div class="alignleft actions">
                     <form method="get">
-                        <input type="hidden" name="page" value="<?php echo esc_attr( $_REQUEST['page'] ); ?>" />
+                        <input type="hidden" name="page" value="<?php echo esc_attr( $page_slug ); ?>" />
                         <label for="filter-by-status" class="screen-reader-text"><?php _e( 'Filter by status', 'akashic-forms' ); ?></label>
                         <select name="status" id="filter-by-status">
                             <option value="all" <?php selected( $current_status, 'all' ); ?>><?php _e( 'All Statuses', 'akashic-forms' ); ?></option>

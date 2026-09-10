@@ -146,12 +146,15 @@ if (! class_exists('Akashic_Forms_Admin')) {
             echo '<h1>' . sprintf(__('Submissions for: %s', 'akashic-forms'), esc_html($form_title));
 
             if ($form_id) {
-                $export_url = add_query_arg(
-                    array(
-                        'action'  => 'export_csv',
-                        'form_id' => $form_id,
+                $export_url = wp_nonce_url(
+                    add_query_arg(
+                        array(
+                            'action'  => 'export_csv',
+                            'form_id' => $form_id,
+                        ),
+                        admin_url('admin.php?page=akashic-forms-submissions')
                     ),
-                    admin_url('admin.php?page=akashic-forms-submissions')
+                    'akashic_export_csv_' . $form_id
                 );
                 echo ' <a href="' . esc_url($export_url) . '" class="page-title-action">' . __('Export to CSV', 'akashic-forms') . '</a>';
 
@@ -188,7 +191,7 @@ if (! class_exists('Akashic_Forms_Admin')) {
             echo '</div>';
 
             if ($form_id) {
-                $submissions_table = new Akashic_Forms_Submissions_List_Table($form_id, 'completed'); // Pass form_id and status
+                $submissions_table = new Akashic_Forms_Submissions_List_Table($form_id); // Pass form_id
                 $submissions_table->prepare_items();
                 $submissions_table->display();
             } else {
@@ -232,7 +235,7 @@ if (! class_exists('Akashic_Forms_Admin')) {
                     $google_client = $client->get_google_client();
 
                     if ($google_client && !$google_client->getAccessToken()) {
-                        $auth_url = $google_client->createAuthUrl();
+                        $auth_url = $client->get_auth_url();
                         echo '<p><a href="' . esc_url($auth_url) . '" class="button button-primary">' . __('Authorize Google Drive Integration', 'akashic-forms') . '</a></p>';
                     } elseif ($google_client && $google_client->getAccessToken()) {
                         // Show detailed token status.
@@ -262,7 +265,7 @@ if (! class_exists('Akashic_Forms_Admin')) {
 
                         // Show re-authorize button if there's a token issue.
                         if ( in_array( $token_status['status'], array( 'no_refresh_token', 'expired' ), true ) ) {
-                            $auth_url = $google_client->createAuthUrl();
+                            $auth_url = $client->get_auth_url();
                             echo ' <a href="' . esc_url( $auth_url ) . '" class="button button-primary">' . __( 'Re-authorize Google Drive', 'akashic-forms' ) . '</a>';
                         }
 
@@ -334,6 +337,14 @@ if (! class_exists('Akashic_Forms_Admin')) {
         {
             echo '<p>' . __('Enter your Google API Client ID and Client Secret. You can create these credentials in the Google API Console.', 'akashic-forms') . '</p>';
             echo '<p>' . sprintf(__('The authorized redirect URI for your Google project should be: %s', 'akashic-forms'), '<code>' . admin_url('admin.php?page=akashic-forms-google-drive-settings') . '</code>') . '</p>';
+
+            // Warn when credentials are hardcoded in wp-config.php, so the fields below are ignored.
+            if (class_exists('Akashic_Forms_Google_Drive') && method_exists('Akashic_Forms_Google_Drive', 'has_credentials_constants')) {
+                $google_drive = new Akashic_Forms_Google_Drive();
+                if ($google_drive->has_credentials_constants()) {
+                    echo '<div class="notice notice-info inline" style="margin: 10px 0; padding: 10px;"><p>' . __('The Google API credentials are defined by constants in wp-config.php. The values stored in the database are ignored.', 'akashic-forms') . '</p></div>';
+                }
+            }
         }
 
         /**
@@ -352,7 +363,7 @@ if (! class_exists('Akashic_Forms_Admin')) {
         public function client_secret_field_callback()
         {
             $client_secret = get_option('akashic_forms_google_client_secret');
-            echo '<input type="text" name="akashic_forms_google_client_secret" value="' . esc_attr($client_secret) . '" class="regular-text" />';
+            echo '<input type="password" name="akashic_forms_google_client_secret" value="' . esc_attr($client_secret) . '" class="regular-text" autocomplete="off" />';
             echo '<p class="description">' . sprintf( __( 'Refer to this guide to get your Client Secret: %s', 'akashic-forms' ), '<a href="https://developers.google.com/identity/protocols/oauth2/web-server#creatingcred" target="_blank">https://developers.google.com/identity/protocols/oauth2/web-server#creatingcred</a>' ) . '</p>';
         }
 
@@ -396,13 +407,15 @@ if (! class_exists('Akashic_Forms_Admin')) {
                 return;
             }
 
+            check_admin_referer('akashic_export_csv_' . $form_id);
+
             // Clean any previous output buffer to prevent corrupting the CSV file.
             if (ob_get_level()) {
                 ob_end_clean();
             }
 
             $form_title = sanitize_title(get_the_title($form_id));
-            $filename   = 'akashic-form-submissions-' . $form_title . '-' . date('Y-m-d') . '.csv';
+            $filename   = 'akashic-form-submissions-' . $form_title . '-' . wp_date('Y-m-d') . '.csv';
 
             header('Content-Type: text/csv; charset=utf-8');
             header('Content-Disposition: attachment; filename=' . $filename);
@@ -424,7 +437,7 @@ if (! class_exists('Akashic_Forms_Admin')) {
                 }
             }
             $header_row['submitted_at'] = __('Submitted At', 'akashic-forms');
-            fputcsv($output, array_values($header_row));
+            fputcsv($output, array_map(array($this, 'escape_csv_value'), array_values($header_row)));
 
             // Prepare data rows
             $db          = new Akashic_Forms_DB();
@@ -446,13 +459,36 @@ if (! class_exists('Akashic_Forms_Admin')) {
                     }
 
                     // Sanitize value to ensure it's valid UTF-8, stripping invalid characters.
-                    $row[] = function_exists('iconv') ? iconv('UTF-8', 'UTF-8//IGNORE', $value) : $value;
+                    $value = function_exists('iconv') ? iconv('UTF-8', 'UTF-8//IGNORE', $value) : $value;
+
+                    $row[] = $this->escape_csv_value($value);
                 }
                 fputcsv($output, $row);
             }
 
             fclose($output);
             exit;
+        }
+
+        /**
+         * Neutralize values that spreadsheet applications would interpret as formulas.
+         *
+         * @param mixed $value Value about to be written to the CSV.
+         * @return mixed Escaped value.
+         */
+        private function escape_csv_value($value)
+        {
+            if (! is_string($value) || '' === $value) {
+                return $value;
+            }
+
+            $unspaced = ltrim($value, ' ');
+
+            if ('' !== $unspaced && false !== strpos("=+-@\t\r", $unspaced[0])) {
+                return "'" . $value;
+            }
+
+            return $value;
         }
 
         /**
@@ -540,7 +576,9 @@ if (! class_exists('Akashic_Forms_Admin')) {
             }
 
             // Redirect back to the submissions page with a success message.
-            wp_safe_redirect(add_query_arg(array('page' => 'akashic-forms-submissions', 'form_id' => $_GET['form_id'], 'deleted' => 'true'), admin_url('admin.php')));
+            $redirect_form_id = isset($_GET['form_id']) ? absint($_GET['form_id']) : 0;
+
+            wp_safe_redirect(add_query_arg(array('page' => 'akashic-forms-submissions', 'form_id' => $redirect_form_id, 'deleted' => 'true'), admin_url('admin.php')));
             exit;
         }
 
@@ -578,7 +616,7 @@ if (! class_exists('Akashic_Forms_Admin')) {
                 ),
                 'akashic_clear_queue'
             );
-            echo ' <a href="' . esc_url($clear_queue_url) . '" class="page-title-action" style="color:#a00;" onclick="return confirm(\' . esc_js(__( \'Are you sure you want to permanently delete all submissions in the queue?\', \'akashic-forms\' )) . \'\');">' . __('Clear Queue', 'akashic-forms') . '</a>';
+            echo ' <a href="' . esc_url($clear_queue_url) . '" class="page-title-action" style="color:#a00;" onclick="return confirm(\'' . esc_js(__('Are you sure you want to permanently delete all submissions in the queue?', 'akashic-forms')) . '\');">' . __('Clear Queue', 'akashic-forms') . '</a>';
 
             if (isset($_GET['synced']) && $_GET['synced']) {
                 echo '<div class="notice notice-success is-dismissible"><p>' . __('Queue processing started.', 'akashic-forms') . '</p></div>';
@@ -610,8 +648,10 @@ if (! class_exists('Akashic_Forms_Admin')) {
 
             check_admin_referer('akashic_force_sync');
 
-            $queue_processor = new Akashic_Forms_Queue_Processor();
-            $queue_processor->process_queue( true );
+            // Fire the cron hook instead of building a second processor: the
+            // constructor registers the cron and settings hooks, so a new
+            // instance would duplicate them for the rest of the request.
+            do_action( 'akashic_forms_process_queue', true );
 
             wp_safe_redirect(add_query_arg(array('page' => 'akashic-forms-queue', 'synced' => 'true'), admin_url('admin.php')));
             exit;
@@ -683,6 +723,26 @@ if (! class_exists('Akashic_Forms_Admin')) {
                 )
             );
 
+            register_setting(
+                'akashic_forms_settings_group',
+                'akashic_forms_queue_batch_size',
+                array(
+                    'type'              => 'integer',
+                    'sanitize_callback' => array($this, 'sanitize_queue_batch_size'),
+                    'default'           => 10,
+                )
+            );
+
+            register_setting(
+                'akashic_forms_settings_group',
+                'akashic_forms_max_attempts',
+                array(
+                    'type'              => 'integer',
+                    'sanitize_callback' => array($this, 'sanitize_max_attempts'),
+                    'default'           => 5,
+                )
+            );
+
             add_settings_section(
                 'akashic_forms_cron_section',
                 __('Cron Settings', 'akashic-forms'),
@@ -705,6 +765,72 @@ if (! class_exists('Akashic_Forms_Admin')) {
                 'akashic-forms-settings',
                 'akashic_forms_cron_section'
             );
+
+            add_settings_field(
+                'akashic_forms_queue_batch_size_field',
+                __('Queue Batch Size', 'akashic-forms'),
+                array($this, 'queue_batch_size_field_callback'),
+                'akashic-forms-settings',
+                'akashic_forms_cron_section'
+            );
+
+            add_settings_field(
+                'akashic_forms_max_attempts_field',
+                __('Max Attempts', 'akashic-forms'),
+                array($this, 'max_attempts_field_callback'),
+                'akashic-forms-settings',
+                'akashic_forms_cron_section'
+            );
+        }
+
+        /**
+         * Sanitize the queue batch size, keeping it between 1 and 100.
+         *
+         * @param mixed $value Raw value.
+         * @return int
+         */
+        public function sanitize_queue_batch_size($value)
+        {
+            return $this->sanitize_int_range($value, 1, 100, 10);
+        }
+
+        /**
+         * Sanitize the max attempts, keeping it between 1 and 20.
+         *
+         * @param mixed $value Raw value.
+         * @return int
+         */
+        public function sanitize_max_attempts($value)
+        {
+            return $this->sanitize_int_range($value, 1, 20, 5);
+        }
+
+        /**
+         * Clamp an integer setting to a range.
+         *
+         * @param mixed $value   Raw value.
+         * @param int   $min     Minimum allowed value.
+         * @param int   $max     Maximum allowed value.
+         * @param int   $default Value used when nothing usable was submitted.
+         * @return int
+         */
+        private function sanitize_int_range($value, $min, $max, $default)
+        {
+            if (! is_numeric($value)) {
+                return $default;
+            }
+
+            $value = (int) $value;
+
+            if ($value < $min) {
+                return $min;
+            }
+
+            if ($value > $max) {
+                return $max;
+            }
+
+            return $value;
         }
 
         /**
@@ -715,8 +841,15 @@ if (! class_exists('Akashic_Forms_Admin')) {
             echo '<p>' . __('Configure the cron job for processing the submission queue.', 'akashic-forms') . '</p>';
             $timestamp = wp_next_scheduled('akashic_forms_process_queue');
             if ($timestamp) {
-                echo '<p>' . sprintf(__('Next run: %s', 'akashic-forms'), get_date_from_gmt(date('Y-m-d H:i:s', $timestamp), 'Y-m-d H:i:s')) . '</p>';
+                echo '<p>' . sprintf(__('Next run: %s', 'akashic-forms'), get_date_from_gmt(gmdate('Y-m-d H:i:s', $timestamp), 'Y-m-d H:i:s')) . '</p>';
             }
+
+            $db = new Akashic_Forms_DB();
+            echo '<p>' . sprintf(
+                __('Queue right now: %1$d pending, %2$d failed.', 'akashic-forms'),
+                (int) $db->get_queue_count('pending'),
+                (int) $db->get_queue_count('failed')
+            ) . '</p>';
         }
 
         /**
@@ -726,6 +859,26 @@ if (! class_exists('Akashic_Forms_Admin')) {
         {
             $enabled = get_option('akashic_forms_cron_enabled', true);
             echo '<input type="checkbox" name="akashic_forms_cron_enabled" value="1" ' . checked(1, $enabled, false) . ' />';
+        }
+
+        /**
+         * Queue batch size field callback.
+         */
+        public function queue_batch_size_field_callback()
+        {
+            $batch_size = (int) get_option('akashic_forms_queue_batch_size', 10);
+            echo '<input type="number" name="akashic_forms_queue_batch_size" value="' . esc_attr($batch_size) . '" min="1" max="100" step="1" class="small-text" />';
+            echo '<p class="description">' . __('How many submissions are processed on each cron run.', 'akashic-forms') . '</p>';
+        }
+
+        /**
+         * Max attempts field callback.
+         */
+        public function max_attempts_field_callback()
+        {
+            $max_attempts = (int) get_option('akashic_forms_max_attempts', 5);
+            echo '<input type="number" name="akashic_forms_max_attempts" value="' . esc_attr($max_attempts) . '" min="1" max="20" step="1" class="small-text" />';
+            echo '<p class="description">' . __('How many times a failing submission is retried before giving up on it.', 'akashic-forms') . '</p>';
         }
 
         /**
